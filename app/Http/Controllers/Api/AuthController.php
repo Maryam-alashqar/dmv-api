@@ -47,17 +47,17 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         $request->validate([
-            'login' => 'required|string',
+            'email' => 'required|string',
             'password' => 'required|string',
         ]);
 
-        $user = User::where('email', $request->login)
-            ->orWhere('phone_number', $request->login)
+        $user = User::where('email', $request->email)
+            ->orWhere('phone_number', $request->email)
             ->first();
 
         if (! $user || ! Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([
-                'login' => ['Invalid login credentials.'],
+                'email' => ['Invalid login credentials.'],
             ]);
         }
 

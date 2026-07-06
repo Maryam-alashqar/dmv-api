@@ -4,13 +4,15 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\UserFactory;
+use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Laravel\Sanctum\HasApiTokens;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Models\Contracts\HasName;
 use Filament\Panel;
+use App\Models\UserSubscription;
+use App\Models\UserQuestionView;
 
 
 class User extends Authenticatable implements FilamentUser, HasName
@@ -83,4 +85,15 @@ class User extends Authenticatable implements FilamentUser, HasName
     {
         return $this->hasMany(Notification::class);
         }
+
+    public function subscriptions()
+{
+    return $this->hasMany(UserSubscription::class);
+}
+
+public function questionViews()
+{
+    return $this->hasMany(UserQuestionView::class);
+}
+
 }

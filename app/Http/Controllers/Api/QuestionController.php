@@ -23,27 +23,45 @@ class QuestionController extends Controller
             ->where('state_id', $request->state_id)
             ->where('is_active', true)
             ->where('import_status', 'active')
-            ->when($request->category_id, function ($query) use ($request) {
-                $query->where('category_id', $request->category_id);
-            })
+            ->when($request->category_id, fn ($query) => $query->where('category_id', $request->category_id))
             ->when($request->category_type, function ($query) use ($request) {
-                $query->whereHas('category', function ($q) use ($request) {
-                    $q->where('category_type', $request->category_type);
-                });
+                $query->whereHas('category', fn ($q) => $q->where('category_type', $request->category_type));
             })
             ->paginate(10);
 
         return $this->successResponse($questions, 'Questions retrieved successfully');
     }
 
-    public function show($id)
+    public function show(Request $request, $id)
     {
         $question = Question::with(['state:id,name_en,name_ar', 'category:id,name_en,name_ar,category_type'])
             ->where('is_active', true)
             ->where('import_status', 'active')
             ->findOrFail($id);
 
-        return $this->successResponse($questions, 'Questions retrieved successfully');
+        $user = $request->user();
+
+        $hasActiveSubscription = $user->subscriptions()
+            ->where('status', 'active')
+            ->where('expiry_date', '>=', now())
+            ->exists();
+
+        if (! $hasActiveSubscription) {
+            $alreadyViewed = $user->questionViews()
+                ->where('question_id', $question->id)
+                ->exists();
+
+            if (! $alreadyViewed && $user->free_questions_used < 10) {
+                $user->questionViews()->create([
+                    'question_id' => $question->id,
+                    'viewed_at' => now(),
+                ]);
+
+                $user->increment('free_questions_used');
+            }
+        }
+
+        return $this->successResponse($question, 'Question retrieved successfully');
     }
 
     public function checkAnswer(Request $request, $id)
@@ -58,15 +76,12 @@ class QuestionController extends Controller
 
         $isCorrect = $request->selected_answer === $question->correct_answer;
 
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'question_id' => $question->id,
-                'selected_answer' => $request->selected_answer,
-                'is_correct' => $isCorrect,
-                'correct_answer' => $question->correct_answer,
-                'explanation_ar' => $question->explanation_ar,
-            ],
-        ]);
+        return $this->successResponse([
+            'question_id' => $question->id,
+            'selected_answer' => $request->selected_answer,
+            'is_correct' => $isCorrect,
+            'correct_answer' => $question->correct_answer,
+            'explanation_ar' => $question->explanation_ar,
+        ], 'Answer checked successfully');
     }
 }

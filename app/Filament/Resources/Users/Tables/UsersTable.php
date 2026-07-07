@@ -16,16 +16,22 @@ class UsersTable
         return $table
             ->columns([
                 TextColumn::make('full_name')
-                    ->searchable(),
+                    ->searchable()
+                    ->sortable(),
                 TextColumn::make('email')
                     ->label('Email address')
-                    ->searchable(),
+                    ->searchable()
+                    ->sortable(),
                 TextColumn::make('phone_number')
                     ->searchable(),
                 TextColumn::make('profile_photo')
                     ->searchable(),
                 TextColumn::make('preferred_language')
                     ->badge(),
+                TextColumn::make('selectedState.name_en')
+                ->label('State')
+                ->searchable()
+                ->sortable(),
                 TextColumn::make('selected_state_id')
                     ->numeric()
                     ->sortable(),

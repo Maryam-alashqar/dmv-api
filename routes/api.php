@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\QuestionController;
 use App\Http\Controllers\Api\SimulationExamController;
 use App\Http\Controllers\Api\SubscriptionPackageController;
 use App\Http\Controllers\Api\SubscriptionController;
+use App\Http\Controllers\Api\AnalyticsController;
 use Illuminate\Support\Facades\Route;
 
 // Authentication
@@ -40,4 +41,9 @@ Route::middleware(['auth:sanctum', 'subscription'])->group(function () {
 
     Route::get('/simulation-exams', [SimulationExamController::class, 'index']);
     Route::post('/simulation-exams/{examId}/start', [SimulationExamController::class, 'start']);
+    Route::get('/exam-attempts/history', [SimulationExamController::class, 'history']);
+
+    Route::get('/analytics/summary', [AnalyticsController::class, 'summary']);
+    Route::get('/analytics/progress', [AnalyticsController::class, 'progress']);
+    Route::get('/analytics/by-category', [AnalyticsController::class, 'byCategory']);
 });

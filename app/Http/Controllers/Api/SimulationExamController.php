@@ -93,7 +93,7 @@ public function saveAnswer(Request $request, $attemptId)
     );
 
     return $this->successResponse($answer, 'Answer saved successfully');
-   
+
 }
 
 public function submit(Request $request, $attemptId)
@@ -179,4 +179,18 @@ public function results(Request $request, $attemptId)
     ]);
 }
 
+public function history(Request $request)
+{
+    $attempts = ExamAttempt::with(['exam', 'state'])
+        ->where('user_id', $request->user()->id)
+        ->where('completion_status', 'completed')
+        ->latest()
+        ->paginate(10);
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Exam attempts history retrieved successfully',
+        'data' => $attempts,
+    ]);
+}
 }

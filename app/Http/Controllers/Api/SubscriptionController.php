@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Payment;
 use Illuminate\Http\Request;
 
 class SubscriptionController extends Controller
@@ -28,4 +29,33 @@ class SubscriptionController extends Controller
             ],
         ]);
     }
+
+    public function history(Request $request)
+{
+    $subscriptions = $request->user()
+        ->subscriptions()
+        ->with(['package', 'payment'])
+        ->latest()
+        ->paginate(10);
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Subscription history retrieved successfully',
+        'data' => $subscriptions,
+    ]);
+}
+
+public function paymentHistory(Request $request)
+{
+    $payments = Payment::with('package')
+        ->where('user_id', $request->user()->id)
+        ->latest()
+        ->paginate(10);
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Payment history retrieved successfully',
+        'data' => $payments,
+    ]);
+}
 }

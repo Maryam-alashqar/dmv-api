@@ -9,17 +9,25 @@ use App\Http\Controllers\Api\SimulationExamController;
 use App\Http\Controllers\Api\SubscriptionPackageController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\AnalyticsController;
+use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\SupportController;
 use Illuminate\Support\Facades\Route;
 
 // Authentication
 Route::post('/auth/register', [AuthController::class, 'register']);
 Route::post('/auth/login', [AuthController::class, 'login']);
+Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
+Route::post('/auth/reset-password', [AuthController::class, 'resetPassword']);
 
 // Public APIs
 Route::get('/states', [StateController::class, 'index']);
 Route::get('/states/{stateId}/categories', [CategoryController::class, 'index']);
 Route::get('/subscription-packages', [SubscriptionPackageController::class, 'index']);
 Route::get('/subscriptions/status', [SubscriptionController::class, 'status']);
+
+Route::get('/about', [SupportController::class, 'about']);
+Route::get('/privacy-policy', [SupportController::class, 'privacyPolicy']);
+Route::get('/terms', [SupportController::class, 'terms']);
 
 // Protected APIs
 Route::middleware('auth:sanctum')->group(function () {
@@ -33,6 +41,19 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/exam-attempts/{attemptId}/submit', [SimulationExamController::class, 'submit']);
     Route::get('/exam-attempts/{attemptId}/results', [SimulationExamController::class, 'results']);
 
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::put('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+    Route::put('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
+
+    Route::get('/subscriptions/history', [SubscriptionController::class, 'history']);
+    Route::get('/payments/history', [SubscriptionController::class, 'paymentHistory']);
+
+    Route::get('/analytics/summary', [AnalyticsController::class, 'summary']);
+    Route::get('/analytics/progress', [AnalyticsController::class, 'progress']);
+    Route::get('/analytics/by-category', [AnalyticsController::class, 'byCategory']);
+
+    Route::get('/exam-attempts/history', [SimulationExamController::class, 'history']);
+
 });
 Route::middleware(['auth:sanctum', 'subscription'])->group(function () {
     Route::get('/questions', [QuestionController::class, 'index']);
@@ -41,9 +62,5 @@ Route::middleware(['auth:sanctum', 'subscription'])->group(function () {
 
     Route::get('/simulation-exams', [SimulationExamController::class, 'index']);
     Route::post('/simulation-exams/{examId}/start', [SimulationExamController::class, 'start']);
-    Route::get('/exam-attempts/history', [SimulationExamController::class, 'history']);
 
-    Route::get('/analytics/summary', [AnalyticsController::class, 'summary']);
-    Route::get('/analytics/progress', [AnalyticsController::class, 'progress']);
-    Route::get('/analytics/by-category', [AnalyticsController::class, 'byCategory']);
 });

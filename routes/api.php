@@ -18,6 +18,8 @@ Route::post('/auth/register', [AuthController::class, 'register']);
 Route::post('/auth/login', [AuthController::class, 'login']);
 Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
 Route::post('/auth/reset-password', [AuthController::class, 'resetPassword']);
+Route::post('/auth/verify', [AuthController::class, 'verify']);
+Route::post('/auth/resend-verification-code', [AuthController::class, 'resendVerificationCode']);
 
 // Public APIs
 Route::get('/states', [StateController::class, 'index']);
@@ -36,6 +38,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/users/selected-state', [AuthController::class, 'updateSelectedState']);
     Route::put('/users/profile', [AuthController::class, 'updateProfile']);
     Route::put('/users/change-password', [AuthController::class, 'changePassword']);
+    Route::patch('/users/profile-photo', [AuthController::class, 'updateProfilePhoto']);
+    Route::delete('/users/account', [AuthController::class, 'deleteAccount']);
     //
     Route::post('/exam-attempts/{attemptId}/answers', [SimulationExamController::class, 'saveAnswer']);
     Route::post('/exam-attempts/{attemptId}/submit', [SimulationExamController::class, 'submit']);
@@ -45,6 +49,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
     Route::put('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
 
+    Route::post('/subscriptions/initiate', [SubscriptionController::class, 'initiate']);
+    Route::get('/subscriptions/status', [SubscriptionController::class, 'status']);
     Route::get('/subscriptions/history', [SubscriptionController::class, 'history']);
     Route::get('/payments/history', [SubscriptionController::class, 'paymentHistory']);
 
@@ -53,6 +59,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/analytics/by-category', [AnalyticsController::class, 'byCategory']);
 
     Route::get('/exam-attempts/history', [SimulationExamController::class, 'history']);
+
+
 
 });
 Route::middleware(['auth:sanctum', 'subscription'])->group(function () {
@@ -64,3 +72,8 @@ Route::middleware(['auth:sanctum', 'subscription'])->group(function () {
     Route::post('/simulation-exams/{examId}/start', [SimulationExamController::class, 'start']);
 
 });
+
+Route::middleware(['auth:sanctum', 'free.quota'])->group(function () {
+    Route::post('/questions/{id}/check-answer', [QuestionController::class, 'checkAnswer']);
+
+    });

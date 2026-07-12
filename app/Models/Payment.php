@@ -26,4 +26,8 @@ public function package()
 {
     return $this->belongsTo(SubscriptionPackage::class, 'package_id');
 }
+
+protected $casts = [
+    'amount_usd' => 'decimal:2',
+];
 }

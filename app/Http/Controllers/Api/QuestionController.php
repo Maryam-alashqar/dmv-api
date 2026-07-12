@@ -64,24 +64,55 @@ class QuestionController extends Controller
         return $this->successResponse($question, 'Question retrieved successfully');
     }
 
-    public function checkAnswer(Request $request, $id)
-    {
-        $request->validate([
-            'selected_answer' => 'required|in:a,b,c,d',
-        ]);
+public function checkAnswer(Request $request, $id)
+{
+    $request->validate([
+        'selected_answer' => 'required|in:a,b,c,d',
+    ]);
 
-        $question = Question::where('is_active', true)
-            ->where('import_status', 'active')
-            ->findOrFail($id);
+    $user = $request->user();
 
-        $isCorrect = $request->selected_answer === $question->correct_answer;
+    $question = Question::where('is_active', true)
+        ->where('import_status', 'active')
+        ->findOrFail($id);
 
-        return $this->successResponse([
-            'question_id' => $question->id,
-            'selected_answer' => $request->selected_answer,
-            'is_correct' => $isCorrect,
-            'correct_answer' => $question->correct_answer,
-            'explanation_ar' => $question->explanation_ar,
-        ], 'Answer checked successfully');
+    $isCorrect = $request->selected_answer === $question->correct_answer;
+
+    $hasActiveSubscription = $user->subscriptions()
+        ->where('status', 'active')
+        ->where('expiry_date', '>=', now())
+        ->exists();
+
+    $freeQuotaLimit = config('dmv.free_questions_limit', 10);
+
+    if (! $hasActiveSubscription) {
+        $user->increment('free_questions_used');
+        $user->refresh();
     }
+
+    $remainingFreeQuestions = $hasActiveSubscription
+        ? null
+        : max(0, $freeQuotaLimit - $user->free_questions_used);
+
+    return $this->successResponse([
+        'question_id' => $question->id,
+        'selected_answer' => $request->selected_answer,
+        'is_correct' => $isCorrect,
+        'correct_answer' => $question->correct_answer,
+        'explanation_ar' => $question->explanation_ar,
+
+        'subscription' => [
+            'has_active_subscription' => $hasActiveSubscription,
+            'free_questions_used' => $hasActiveSubscription
+                ? null
+                : $user->free_questions_used,
+            'free_questions_limit' => $hasActiveSubscription
+                ? null
+                : $freeQuotaLimit,
+            'remaining_free_questions' => $remainingFreeQuestions,
+            'upgrade_required' => ! $hasActiveSubscription
+                && $remainingFreeQuestions === 0,
+        ],
+    ], 'Answer checked successfully');
+}
 }

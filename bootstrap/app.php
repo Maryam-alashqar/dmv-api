@@ -15,6 +15,8 @@ return Application::configure(basePath: dirname(__DIR__))
         //
         $middleware->alias([
             'subscription' => \App\Http\Middleware\CheckSubscriptionAccess::class,
+            'free.quota' => \App\Http\Middleware\CheckFreeQuota::class,
+
             ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

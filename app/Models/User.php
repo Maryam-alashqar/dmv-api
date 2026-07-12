@@ -10,9 +10,13 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Models\Contracts\HasName;
-use Filament\Panel;
 use App\Models\UserSubscription;
 use App\Models\UserQuestionView;
+use App\Models\VerificationCode;
+use App\Models\Payment;
+use Filament\Panel;
+
+
 
 
 class User extends Authenticatable implements FilamentUser, HasName
@@ -96,4 +100,12 @@ public function questionViews()
     return $this->hasMany(UserQuestionView::class);
 }
 
+public function verificationCodes()
+{
+    return $this->hasMany(VerificationCode::class);
+}
+public function payments()
+{
+    return $this->hasMany(Payment::class);
+}
 }

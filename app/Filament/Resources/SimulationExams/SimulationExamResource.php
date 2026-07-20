@@ -22,6 +22,9 @@ class SimulationExamResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'title_ar';
 
+    protected static string|\UnitEnum|null $navigationGroup = 'Content Management';
+    protected static ?int $navigationSort = 4;
+    
     public static function form(Schema $schema): Schema
     {
         return SimulationExamForm::configure($schema);

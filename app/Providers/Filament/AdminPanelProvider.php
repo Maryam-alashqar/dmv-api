@@ -10,14 +10,15 @@ use Filament\Pages\Dashboard;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
-use Filament\Widgets\AccountWidget;
-use Filament\Widgets\FilamentInfoWidget;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
+use Filament\Navigation\NavigationGroup;
+use App\Filament\Widgets\DmvStatsOverview;
+use App\Livewire\UsersChart;
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -29,8 +30,27 @@ class AdminPanelProvider extends PanelProvider
             ->path('admin')
             ->login()
             ->colors([
-                'primary' => Color::Amber,
+                 'primary' => '#0B84D8',   // الأزرق
+                 'success' => '#22C55E',   // الأخضر
+                 'warning' => '#F59E0B',   // البرتقالي
+                 'danger'  => '#EF4444',   // الأحمر
+                 'gray'    => Color::Slate,
+
             ])
+            ->brandLogo(asset('images/dmv-logo.png'))
+            ->favicon(asset('favicon.png'))
+            ->brandLogoHeight('80px')
+            ->brandName('DMV')
+            ->navigationGroups([
+                NavigationGroup::make()
+                ->label('Content Management'),
+
+                NavigationGroup::make()
+                ->label('Subscription Management'),
+
+                NavigationGroup::make()
+                ->label('User Management'),
+                ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([
@@ -38,9 +58,10 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\Filament\Widgets')
             ->widgets([
-                AccountWidget::class,
-                FilamentInfoWidget::class,
-            ])
+                DmvStatsOverview::class,
+                UsersChart::class,
+
+                ])
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,

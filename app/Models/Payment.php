@@ -30,4 +30,5 @@ public function package()
 protected $casts = [
     'amount_usd' => 'decimal:2',
 ];
+
 }

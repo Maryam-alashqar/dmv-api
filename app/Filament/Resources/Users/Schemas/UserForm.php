@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Users\Schemas;
 
+use App\Models\User;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -30,9 +31,16 @@ class UserForm
                     ->dehydrateStateUsing(fn ($state) => filled($state) ? Hash::make($state) : null)
                     ->dehydrated(fn ($state) => filled($state))
                     ->required(fn (string $operation): bool => $operation === 'create'),
-                FileUpload::make('profile_photo')
+                FileUpload::make('profile_photo_url')
+                    ->label('Profile Photo')
                     ->image()
-                    ->directory('profiles'),
+                    ->disk('public')
+                    ->directory('profile-photos')
+                    ->visibility('public')
+                    // The DB column stores the relative disk path (see User::profilePhotoUrl()),
+                    // so pull the raw value here instead of the accessor's computed full URL,
+                    // otherwise Filament can't locate the file to preview it.
+                    ->formatStateUsing(fn (?User $record) => $record?->getRawOriginal('profile_photo_url')),
                 Select::make('preferred_language')
                     ->options(['ar' => 'Ar', 'en' => 'En'])
                     ->default('ar')

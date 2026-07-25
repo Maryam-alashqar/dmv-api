@@ -25,7 +25,12 @@ class SubscriptionPackageForm
                     ->required()
                     ->numeric(),
                 TextInput::make('stripe_price_id')
-                    ->default(null),
+                    ->helperText('Managed automatically from the price above — created/updated in Stripe on save.')
+                    ->disabled()
+                    ->dehydrated(false),
+                TextInput::make('stripe_product_id')
+                    ->disabled()
+                    ->dehydrated(false),
                 TextInput::make('apple_product_id')
                     ->default(null),
                 Textarea::make('features')->rows(5)

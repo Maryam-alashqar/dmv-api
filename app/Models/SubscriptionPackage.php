@@ -13,6 +13,7 @@ class SubscriptionPackage extends Model
     'duration_days',
     'price_usd',
     'stripe_price_id',
+    'stripe_product_id',
     'apple_product_id',
     'features',
     'is_active',

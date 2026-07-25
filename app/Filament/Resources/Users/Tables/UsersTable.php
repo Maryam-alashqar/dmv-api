@@ -24,7 +24,7 @@ class UsersTable
                     ->sortable(),
                 TextColumn::make('phone_number')
                     ->searchable(),
-                TextColumn::make('profile_photo')
+                TextColumn::make('profile_photo_url')
                     ->searchable(),
                 TextColumn::make('preferred_language')
                     ->badge(),

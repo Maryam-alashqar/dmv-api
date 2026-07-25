@@ -41,4 +41,13 @@ return [
     'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
     ],
 
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+    ],
+
+    'apple' => [
+        'client_id' => env('APPLE_CLIENT_ID'),
+        'shared_secret' => env('APPLE_SHARED_SECRET'),
+    ],
+
 ];

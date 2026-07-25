@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Support\Facades\Storage;
@@ -59,12 +61,9 @@ class AuthController extends Controller
         $user = User::where('phone_number', $request->phone_number)->first();
 
         if ($user->verification_status) {
-            $token = $user->createToken('mobile-token')->plainTextToken;
-
-            return $this->successResponse([
+            return $this->successResponse(array_merge([
                 'user' => $user,
-                'token' => $token,
-            ], 'Account already verified.');
+            ], $this->issueTokens($user)), 'Account already verified.');
         }
 
         $verificationCode = $user->verificationCodes()
@@ -89,12 +88,9 @@ class AuthController extends Controller
             'verification_status' => true,
         ]);
 
-        $token = $user->createToken('mobile-token')->plainTextToken;
-
-        return $this->successResponse([
+        return $this->successResponse(array_merge([
             'user' => $user->fresh(),
-            'token' => $token,
-        ], 'Account verified successfully.');
+        ], $this->issueTokens($user)), 'Account verified successfully.');
     }
 
     public function login(Request $request)
@@ -124,19 +120,233 @@ class AuthController extends Controller
             'last_login' => now(),
         ]);
 
-        $token = $user->createToken('mobile-token')->plainTextToken;
-
-        return $this->successResponse([
+        return $this->successResponse(array_merge([
             'user' => $user,
-            'token' => $token,
-        ], 'Logged in successfully.');
+        ], $this->issueTokens($user)), 'Logged in successfully.');
+    }
+
+    public function social(Request $request)
+    {
+        $request->validate([
+            'provider' => 'required|in:apple,google',
+            'token' => 'required|string',
+        ]);
+
+        $profile = $request->provider === 'apple'
+            ? $this->verifyAppleToken($request->token)
+            : $this->verifyGoogleToken($request->token);
+
+        $uidColumn = $request->provider === 'apple' ? 'apple_uid' : 'google_uid';
+
+        $user = User::where($uidColumn, $profile['provider_uid'])->first();
+
+        if (! $user && ! empty($profile['email'])) {
+            $user = User::where('email', $profile['email'])->first();
+        }
+
+        if (! $user) {
+            $user = User::create([
+                'full_name' => $profile['name'] ?? 'DMV User',
+                'email' => $profile['email'],
+                'password' => Hash::make(Str::random(40)),
+                $uidColumn => $profile['provider_uid'],
+                'role' => 'user',
+                'verification_status' => true,
+                'account_status' => 'active',
+            ]);
+        } elseif (! $user->{$uidColumn}) {
+            $user->update([$uidColumn => $profile['provider_uid']]);
+        }
+
+        if ($user->account_status !== 'active') {
+            return $this->errorResponse('Account is disabled.', 403);
+        }
+
+        $user->update(['last_login' => now()]);
+
+        return $this->successResponse(array_merge([
+            'user' => $user->fresh(),
+        ], $this->issueTokens($user)), 'Signed in successfully.');
+    }
+
+    public function refreshToken(Request $request)
+    {
+        $currentToken = $request->user()->currentAccessToken();
+
+        if (! $currentToken || ! $currentToken->can('refresh')) {
+            return $this->errorResponse('Invalid refresh token.', 401);
+        }
+
+        $user = $request->user();
+
+        $currentToken->delete();
+
+        return $this->successResponse($this->issueTokens($user), 'Token refreshed successfully.');
     }
 
     public function logout(Request $request)
     {
-        $request->user()->currentAccessToken()->delete();
+        $request->user()->tokens()->delete();
 
         return $this->successResponse(null, 'Logged out successfully.');
+    }
+
+    /**
+     * Issue a short-lived access token and a long-lived refresh token for the given user.
+     */
+    private function issueTokens(User $user): array
+    {
+        $accessTokenExpiry = now()->addMinutes(15);
+        $refreshTokenExpiry = now()->addDays(7);
+
+        $accessToken = $user->createToken('access-token', ['access'], $accessTokenExpiry)->plainTextToken;
+        $refreshToken = $user->createToken('refresh-token', ['refresh'], $refreshTokenExpiry)->plainTextToken;
+
+        return [
+            'access_token' => $accessToken,
+            'refresh_token' => $refreshToken,
+            'token_type' => 'Bearer',
+            'expires_in' => 15 * 60,
+        ];
+    }
+
+    /**
+     * Verify a Google ID token and return the provider's user profile.
+     */
+    private function verifyGoogleToken(string $idToken): array
+    {
+        $response = Http::timeout(10)->get('https://oauth2.googleapis.com/tokeninfo', [
+            'id_token' => $idToken,
+        ]);
+
+        if ($response->failed()) {
+            throw ValidationException::withMessages([
+                'token' => ['Invalid or expired Google identity token.'],
+            ]);
+        }
+
+        $payload = $response->json();
+
+        $clientId = config('services.google.client_id');
+
+        if ($clientId && ($payload['aud'] ?? null) !== $clientId) {
+            throw ValidationException::withMessages([
+                'token' => ['Google identity token was not issued for this app.'],
+            ]);
+        }
+
+        return [
+            'provider_uid' => $payload['sub'],
+            'email' => $payload['email'] ?? null,
+            'name' => $payload['name'] ?? null,
+        ];
+    }
+
+    /**
+     * Verify an Apple identity token (JWT) against Apple's published JWKS and return the profile.
+     */
+    private function verifyAppleToken(string $identityToken): array
+    {
+        $parts = explode('.', $identityToken);
+
+        if (count($parts) !== 3) {
+            throw ValidationException::withMessages([
+                'token' => ['Invalid Apple identity token.'],
+            ]);
+        }
+
+        [$headerB64, $payloadB64, $signatureB64] = $parts;
+
+        $header = json_decode($this->base64UrlDecode($headerB64), true);
+        $payload = json_decode($this->base64UrlDecode($payloadB64), true);
+        $signature = $this->base64UrlDecode($signatureB64);
+
+        $keys = Http::timeout(10)->get('https://appleid.apple.com/auth/keys')->json('keys') ?? [];
+        $key = collect($keys)->firstWhere('kid', $header['kid'] ?? null);
+
+        if (! $key) {
+            throw ValidationException::withMessages([
+                'token' => ['Unable to verify Apple identity token.'],
+            ]);
+        }
+
+        $publicKey = $this->jwkToPem($key['n'], $key['e']);
+
+        $verified = openssl_verify(
+            $headerB64 . '.' . $payloadB64,
+            $signature,
+            $publicKey,
+            OPENSSL_ALGO_SHA256
+        );
+
+        if ($verified !== 1) {
+            throw ValidationException::withMessages([
+                'token' => ['Apple identity token signature is invalid.'],
+            ]);
+        }
+
+        $clientId = config('services.apple.client_id');
+
+        if (($payload['iss'] ?? null) !== 'https://appleid.apple.com'
+            || ($payload['exp'] ?? 0) < now()->timestamp
+            || ($clientId && ($payload['aud'] ?? null) !== $clientId)) {
+            throw ValidationException::withMessages([
+                'token' => ['Apple identity token is expired or invalid.'],
+            ]);
+        }
+
+        return [
+            'provider_uid' => $payload['sub'],
+            'email' => $payload['email'] ?? null,
+            'name' => null,
+        ];
+    }
+
+    private function jwkToPem(string $n, string $e): string
+    {
+        $modulus = $this->encodeDerInteger($this->base64UrlDecode($n));
+        $exponent = $this->encodeDerInteger($this->base64UrlDecode($e));
+
+        $rsaPublicKey = $this->encodeDerSequence($modulus . $exponent);
+
+        $algorithmIdentifier = pack('H*', '300d06092a864886f70d0101010500');
+        $bitString = "\x03" . $this->encodeDerLength(strlen($rsaPublicKey) + 1) . "\x00" . $rsaPublicKey;
+
+        $publicKeyInfo = $this->encodeDerSequence($algorithmIdentifier . $bitString);
+
+        return "-----BEGIN PUBLIC KEY-----\n"
+            . chunk_split(base64_encode($publicKeyInfo), 64, "\n")
+            . "-----END PUBLIC KEY-----\n";
+    }
+
+    private function encodeDerLength(int $length): string
+    {
+        if ($length < 128) {
+            return chr($length);
+        }
+
+        $bytes = ltrim(pack('N', $length), "\x00");
+
+        return chr(0x80 | strlen($bytes)) . $bytes;
+    }
+
+    private function encodeDerInteger(string $bytes): string
+    {
+        if (ord($bytes[0]) > 0x7f) {
+            $bytes = "\x00" . $bytes;
+        }
+
+        return "\x02" . $this->encodeDerLength(strlen($bytes)) . $bytes;
+    }
+
+    private function encodeDerSequence(string $bytes): string
+    {
+        return "\x30" . $this->encodeDerLength(strlen($bytes)) . $bytes;
+    }
+
+    private function base64UrlDecode(string $data): string
+    {
+        return base64_decode(strtr($data, '-_', '+/') . str_repeat('=', (4 - strlen($data) % 4) % 4));
     }
 
     public function profile(Request $request)
@@ -301,22 +511,20 @@ public function updateProfilePhoto(Request $request)
 
     $user = $request->user();
 
-    if ($user->profile_photo_url) {
-        $oldPath = str_replace('/storage/', '', $user->profile_photo_url);
+    $oldPath = $user->getRawOriginal('profile_photo_url');
 
-        if (Storage::disk('public')->exists($oldPath)) {
-            Storage::disk('public')->delete($oldPath);
-        }
+    if ($oldPath && Storage::disk('public')->exists($oldPath)) {
+        Storage::disk('public')->delete($oldPath);
     }
 
     $path = $request->file('photo')->store('profile-photos', 'public');
 
     $user->update([
-        'profile_photo_url' => '/storage/' . $path,
+        'profile_photo_url' => $path,
     ]);
 
     return $this->successResponse([
-        'profile_photo_url' => $user->profile_photo_url,
+        'profile_photo_url' => $user->fresh()->profile_photo_url,
     ], 'Profile photo updated successfully.');
 }
 

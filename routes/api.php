@@ -16,23 +16,28 @@ use Illuminate\Support\Facades\Route;
 // Authentication
 Route::post('/auth/register', [AuthController::class, 'register']);
 Route::post('/auth/login', [AuthController::class, 'login']);
+Route::post('/auth/social', [AuthController::class, 'social']);
 Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
 Route::post('/auth/reset-password', [AuthController::class, 'resetPassword']);
 Route::post('/auth/verify', [AuthController::class, 'verify']);
 Route::post('/auth/resend-verification-code', [AuthController::class, 'resendVerificationCode']);
 
+Route::middleware(['auth:sanctum', 'ability:refresh'])->group(function () {
+    Route::get('/auth/refresh-token', [AuthController::class, 'refreshToken']);
+});
+
 // Public APIs
 Route::get('/states', [StateController::class, 'index']);
 Route::get('/states/{stateId}/categories', [CategoryController::class, 'index']);
 Route::get('/subscription-packages', [SubscriptionPackageController::class, 'index']);
-Route::get('/subscriptions/status', [SubscriptionController::class, 'status']);
+Route::post('/subscriptions/stripe-webhook', [SubscriptionController::class, 'stripeWebhook']);
 
 Route::get('/about', [SupportController::class, 'about']);
 Route::get('/privacy-policy', [SupportController::class, 'privacyPolicy']);
 Route::get('/terms', [SupportController::class, 'terms']);
 
 // Protected APIs
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'ability:access'])->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/users/profile', [AuthController::class, 'profile']);
     Route::put('/users/selected-state', [AuthController::class, 'updateSelectedState']);
@@ -50,6 +55,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
 
     Route::post('/subscriptions/initiate', [SubscriptionController::class, 'initiate']);
+    Route::post('/subscriptions/apple-iap', [SubscriptionController::class, 'appleIap']);
     Route::get('/subscriptions/status', [SubscriptionController::class, 'status']);
     Route::get('/subscriptions/history', [SubscriptionController::class, 'history']);
     Route::get('/payments/history', [SubscriptionController::class, 'paymentHistory']);
@@ -63,7 +69,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
 
 });
-Route::middleware(['auth:sanctum', 'subscription'])->group(function () {
+Route::middleware(['auth:sanctum', 'ability:access', 'subscription'])->group(function () {
     Route::get('/questions', [QuestionController::class, 'index']);
     Route::get('/questions/{id}', [QuestionController::class, 'show']);
     Route::post('/questions/{id}/check-answer', [QuestionController::class, 'checkAnswer']);
@@ -73,7 +79,7 @@ Route::middleware(['auth:sanctum', 'subscription'])->group(function () {
 
 });
 
-Route::middleware(['auth:sanctum', 'free.quota'])->group(function () {
+Route::middleware(['auth:sanctum', 'ability:access', 'free.quota'])->group(function () {
     Route::post('/questions/{id}/check-answer', [QuestionController::class, 'checkAnswer']);
 
     });

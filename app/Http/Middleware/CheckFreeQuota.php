@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Setting;
 use Closure;
 use Illuminate\Http\Request;
 
@@ -20,7 +21,7 @@ class CheckFreeQuota
             return $next($request);
         }
 
-        $freeQuotaLimit = config('dmv.free_questions_limit', 10);
+        $freeQuotaLimit = Setting::get('free_questions_limit', config('dmv.free_questions_limit', 10));
 
         if ($user->free_questions_used >= $freeQuotaLimit) {
             return response()->json([

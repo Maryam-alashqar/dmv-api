@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Setting;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -21,7 +22,9 @@ class CheckSubscriptionAccess
             return $next($request);
         }
 
-        if ($user->free_questions_used < 10) {
+        $freeQuotaLimit = Setting::get('free_questions_limit', config('dmv.free_questions_limit', 10));
+
+        if ($user->free_questions_used < $freeQuotaLimit) {
             return $next($request);
         }
 

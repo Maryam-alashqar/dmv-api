@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Question;
+use App\Models\Setting;
 use Illuminate\Http\Request;
 use App\Traits\ApiResponseTrait;
 
@@ -51,7 +52,9 @@ class QuestionController extends Controller
                 ->where('question_id', $question->id)
                 ->exists();
 
-            if (! $alreadyViewed && $user->free_questions_used < 10) {
+            $freeQuotaLimit = Setting::get('free_questions_limit', config('dmv.free_questions_limit', 10));
+
+            if (! $alreadyViewed && $user->free_questions_used < $freeQuotaLimit) {
                 $user->questionViews()->create([
                     'question_id' => $question->id,
                     'viewed_at' => now(),
@@ -83,7 +86,7 @@ public function checkAnswer(Request $request, $id)
         ->where('expiry_date', '>=', now())
         ->exists();
 
-    $freeQuotaLimit = config('dmv.free_questions_limit', 10);
+    $freeQuotaLimit = Setting::get('free_questions_limit', config('dmv.free_questions_limit', 10));
 
     if (! $hasActiveSubscription) {
         $user->increment('free_questions_used');

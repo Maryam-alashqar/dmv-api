@@ -35,14 +35,7 @@ class AuthController extends Controller
             'account_status' => 'active',
         ]);
 
-        $code = (string) rand(100000, 999999);
-
-        $user->verificationCodes()->create([
-            'phone_number' => $user->phone_number,
-            'code' => $code,
-            'expires_at' => now()->addMinutes(5),
-            'used' => false,
-        ]);
+        $code = $this->issueVerificationCode($user);
 
         return $this->successResponse([
             'user_id' => $user->id,
@@ -113,7 +106,23 @@ class AuthController extends Controller
         }
 
         if (! $user->verification_status) {
-            return $this->errorResponse('Please verify your phone number first.', 403);
+            $recentCodesCount = $user->verificationCodes()
+                ->where('created_at', '>=', now()->subHour())
+                ->count();
+
+            $errors = [
+                'requires_verification' => true,
+                'phone_number' => $user->phone_number,
+            ];
+
+            if ($recentCodesCount < 3) {
+                $errors['verification_code_for_testing'] = $this->issueVerificationCode($user);
+                $message = 'Account not verified yet. A new verification code has been sent.';
+            } else {
+                $message = 'Account not verified yet. Please verify using your existing code, or try again later.';
+            }
+
+            return $this->errorResponse($message, 403, $errors);
         }
 
         $user->update([
@@ -189,6 +198,23 @@ class AuthController extends Controller
         $request->user()->tokens()->delete();
 
         return $this->successResponse(null, 'Logged out successfully.');
+    }
+
+    /**
+     * Generate a 6-digit verification code (5 min expiry) and record it for the user.
+     */
+    private function issueVerificationCode(User $user): string
+    {
+        $code = (string) rand(100000, 999999);
+
+        $user->verificationCodes()->create([
+            'phone_number' => $user->phone_number,
+            'code' => $code,
+            'expires_at' => now()->addMinutes(5),
+            'used' => false,
+        ]);
+
+        return $code;
     }
 
     /**
@@ -431,14 +457,7 @@ class AuthController extends Controller
         return $this->errorResponse('Maximum resend attempts reached. Try again later.', 429);
     }
 
-    $code = (string) rand(100000, 999999);
-
-    $user->verificationCodes()->create([
-        'phone_number' => $user->phone_number,
-        'code' => $code,
-        'expires_at' => now()->addMinutes(5),
-        'used' => false,
-    ]);
+    $code = $this->issueVerificationCode($user);
 
     return $this->successResponse([
         'phone_number' => $user->phone_number,

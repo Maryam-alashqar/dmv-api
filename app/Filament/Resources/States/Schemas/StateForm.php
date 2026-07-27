@@ -17,7 +17,12 @@ class StateForm
                 TextInput::make('name_ar')
                     ->required(),
                 TextInput::make('abbreviation')
-                    ->required(),
+                    ->required()
+                    ->length(2)
+                    ->unique(ignoreRecord: true)
+                    ->helperText('2-letter U.S. state code, e.g. CA, NY, TX.')
+                    ->formatStateUsing(fn (?string $state) => $state ? strtoupper($state) : $state)
+                    ->dehydrateStateUsing(fn (?string $state) => $state ? strtoupper($state) : $state),
                 TextInput::make('dmv_question_count')
                     ->required()
                     ->numeric(),

@@ -23,6 +23,7 @@ class AuthController extends Controller
             'phone_number' => 'required|string|unique:users,phone_number',
             'email' => 'nullable|email|unique:users,email',
             'password' => 'required|string|min:8|confirmed',
+            'state_id' => 'required|exists:states,id',
         ]);
 
         $user = User::create([
@@ -33,6 +34,7 @@ class AuthController extends Controller
             'role' => 'user',
             'verification_status' => false,
             'account_status' => 'active',
+            'selected_state_id' => $request->state_id,
         ]);
 
         $code = $this->issueVerificationCode($user);
@@ -395,6 +397,19 @@ class AuthController extends Controller
         return $this->successResponse([
             'user' => $user->fresh('selectedState'),
         ], 'Selected state updated successfully.');
+    }
+
+    public function updateFcmToken(Request $request)
+    {
+        $request->validate([
+            'fcm_token' => 'required|string',
+        ]);
+
+        $request->user()->update([
+            'fcm_token' => $request->fcm_token,
+        ]);
+
+        return $this->successResponse(null, 'Device registered for push notifications.');
     }
 
     public function updateProfile(Request $request)

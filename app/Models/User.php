@@ -46,6 +46,7 @@ class User extends Authenticatable implements FilamentUser, HasName
     'stripe_customer_id',
     'apple_uid',
     'google_uid',
+    'fcm_token',
     'role',
     'last_login',
 ];

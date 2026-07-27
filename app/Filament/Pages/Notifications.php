@@ -102,7 +102,7 @@ public function send(): void
     $users = match ($data['recipient_type']) {
         'user' => User::where('id', $data['user_id'])->get(),
 
-        'state' => User::where('state_id', $data['state_id'])->get(),
+        'state' => User::where('selected_state_id', $data['state_id'])->get(),
 
         default => User::all(),
     };

@@ -3,8 +3,10 @@
 namespace App\Filament\Pages;
 
 use App\Models\Category;
+use App\Models\Notification as AppNotification;
 use App\Models\Question;
 use App\Models\State;
+use App\Models\User;
 use App\Services\AiQuestionExtractor;
 use BackedEnum;
 use Filament\Forms\Components\Select;
@@ -148,10 +150,40 @@ class AiImport extends Page implements HasSchemas
             ]);
         }
 
+        $this->notifyStateUsersOfNewContent((int) $data['state_id'], $included->count());
+
         Notification::make()->title($included->count() . ' question(s) imported successfully.')->success()->send();
 
         $this->extractedQuestions = [];
         $this->uploadedFile = null;
+    }
+
+    /**
+     * FR-44: notify users who have this state selected that new content is
+     * available. Fired once per confirmed import batch (not per question)
+     * to avoid spamming users when an admin reviews/confirms many at once.
+     */
+    private function notifyStateUsersOfNewContent(int $stateId, int $questionCount): void
+    {
+        $state = State::find($stateId);
+
+        if (! $state) {
+            return;
+        }
+
+        $message = "تمت إضافة {$questionCount} سؤال جديد لولاية {$state->name_ar}. جرّبها الآن!";
+
+        User::query()
+            ->where('selected_state_id', $stateId)
+            ->each(function (User $user) use ($message) {
+                AppNotification::create([
+                    'user_id' => $user->id,
+                    'title_ar' => 'محتوى جديد متاح',
+                    'message_ar' => $message,
+                    'type' => 'content_update',
+                    'read_status' => false,
+                ]);
+            });
     }
 
     public function removeExtracted(int $index): void

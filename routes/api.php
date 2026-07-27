@@ -41,6 +41,7 @@ Route::middleware(['auth:sanctum', 'ability:access'])->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/users/profile', [AuthController::class, 'profile']);
     Route::put('/users/selected-state', [AuthController::class, 'updateSelectedState']);
+    Route::put('/users/fcm-token', [AuthController::class, 'updateFcmToken']);
     Route::put('/users/profile', [AuthController::class, 'updateProfile']);
     Route::put('/users/change-password', [AuthController::class, 'changePassword']);
     Route::patch('/users/profile-photo', [AuthController::class, 'updateProfilePhoto']);

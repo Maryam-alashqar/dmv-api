@@ -32,12 +32,12 @@ class SimulationExamController extends Controller
     $exam = SimulationExam::where('is_published', true)
         ->findOrFail($examId);
 
-    $questions = Question::where('state_id', $exam->state_id)
-        ->where('is_active', true)
-        ->where('import_status', 'active')
-        ->inRandomOrder()
-        ->limit($exam->total_questions)
-        ->get();
+    // BR-05: simulation exams are scoped exclusively to the user's selected state.
+    if ((int) $exam->state_id !== (int) $request->user()->selected_state_id) {
+        return $this->errorResponse('This simulation exam is not available for your selected state.', 403);
+    }
+
+    $questions = $this->selectRandomizedQuestions($exam->state_id, $exam->total_questions);
 
     if ($questions->count() < $exam->total_questions) {
         return response()->json([
@@ -113,9 +113,11 @@ public function submit(Request $request, $attemptId)
     $exam = $attempt->exam;
 
     $passed = $correctAnswers >= $exam->passing_score;
+    $endTime = now();
+    $timeTakenSeconds = (int) round($attempt->start_time->diffInSeconds($endTime));
 
     $attempt->update([
-        'end_time' => now(),
+        'end_time' => $endTime,
         'score' => $correctAnswers,
         'correct_answers' => $correctAnswers,
         'incorrect_answers' => $incorrectAnswers,
@@ -128,6 +130,8 @@ public function submit(Request $request, $attemptId)
         'message' => 'Exam submitted successfully',
         'data' => [
             'attempt' => $attempt->fresh(),
+            'time_taken_seconds' => $timeTakenSeconds,
+            'time_taken' => $this->formatDuration($timeTakenSeconds),
             'answered_questions' => $answeredCount,
             'unanswered_questions' => $attempt->total_questions - $answeredCount,
             'passed' => $passed,
@@ -145,6 +149,10 @@ public function results(Request $request, $attemptId)
     ->where('user_id', $request->user()->id)
     ->findOrFail($attemptId);
 
+    $timeTakenSeconds = $attempt->end_time
+        ? (int) round($attempt->start_time->diffInSeconds($attempt->end_time))
+        : null;
+
     return response()->json([
         'success' => true,
         'data' => [
@@ -156,6 +164,8 @@ public function results(Request $request, $attemptId)
                 'passed' => $attempt->passed,
                 'start_time' => $attempt->start_time,
                 'end_time' => $attempt->end_time,
+                'time_taken_seconds' => $timeTakenSeconds,
+                'time_taken' => $timeTakenSeconds !== null ? $this->formatDuration($timeTakenSeconds) : null,
             ],
 
             'exam' => $attempt->exam,
@@ -192,5 +202,107 @@ public function history(Request $request)
         'message' => 'Exam attempts history retrieved successfully',
         'data' => $attempts,
     ]);
+}
+
+/**
+ * FR-32: randomize the question set so it also reflects the state's real
+ * category mix (content distribution), instead of pulling flat-random from
+ * the whole state pool where one category could dominate by chance.
+ * Allocates $totalNeeded proportionally across categories based on each
+ * category's share of the active question bank (largest-remainder
+ * rounding), then redistributes any shortfall from under-stocked
+ * categories to others with spare questions before sampling and shuffling.
+ */
+private function selectRandomizedQuestions(int $stateId, int $totalNeeded)
+{
+    $categoryCounts = Question::where('state_id', $stateId)
+        ->where('is_active', true)
+        ->where('import_status', 'active')
+        ->selectRaw('category_id, COUNT(*) as total')
+        ->groupBy('category_id')
+        ->pluck('total', 'category_id');
+
+    $totalAvailable = $categoryCounts->sum();
+
+    if ($totalAvailable < $totalNeeded) {
+        return collect();
+    }
+
+    $allocations = [];
+    $remainders = [];
+    $allocatedSum = 0;
+
+    foreach ($categoryCounts as $categoryId => $available) {
+        $exact = ($available / $totalAvailable) * $totalNeeded;
+        $allocations[$categoryId] = (int) floor($exact);
+        $remainders[$categoryId] = $exact - $allocations[$categoryId];
+        $allocatedSum += $allocations[$categoryId];
+    }
+
+    $leftover = $totalNeeded - $allocatedSum;
+    arsort($remainders);
+
+    foreach (array_keys($remainders) as $categoryId) {
+        if ($leftover <= 0) {
+            break;
+        }
+
+        $allocations[$categoryId]++;
+        $leftover--;
+    }
+
+    // A category can be allocated more than it actually has left over from
+    // rounding; cap it and push the shortfall onto categories with spare capacity.
+    $shortfall = 0;
+
+    foreach ($allocations as $categoryId => $count) {
+        $available = $categoryCounts[$categoryId];
+
+        if ($count > $available) {
+            $shortfall += $count - $available;
+            $allocations[$categoryId] = $available;
+        }
+    }
+
+    if ($shortfall > 0) {
+        foreach ($allocations as $categoryId => $count) {
+            if ($shortfall <= 0) {
+                break;
+            }
+
+            $spare = $categoryCounts[$categoryId] - $count;
+
+            if ($spare > 0) {
+                $add = min($spare, $shortfall);
+                $allocations[$categoryId] += $add;
+                $shortfall -= $add;
+            }
+        }
+    }
+
+    $questions = collect();
+
+    foreach ($allocations as $categoryId => $count) {
+        if ($count <= 0) {
+            continue;
+        }
+
+        $questions = $questions->merge(
+            Question::where('state_id', $stateId)
+                ->where('category_id', $categoryId)
+                ->where('is_active', true)
+                ->where('import_status', 'active')
+                ->inRandomOrder()
+                ->limit($count)
+                ->get()
+        );
+    }
+
+    return $questions->shuffle()->values();
+}
+
+private function formatDuration(int $seconds): string
+{
+    return sprintf('%02d:%02d', intdiv($seconds, 60), $seconds % 60);
 }
 }

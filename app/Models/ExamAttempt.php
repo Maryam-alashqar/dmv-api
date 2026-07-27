@@ -21,6 +21,12 @@ class ExamAttempt extends Model
     'completion_status',
     ];
 
+    protected $casts = [
+        'start_time' => 'datetime',
+        'end_time' => 'datetime',
+        'passed' => 'boolean',
+    ];
+
     public function user()
     {
         return $this->belongsTo(User::class);

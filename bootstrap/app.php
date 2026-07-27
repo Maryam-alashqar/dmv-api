@@ -15,6 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
         //
         $middleware->alias([
             'subscription' => \App\Http\Middleware\CheckSubscriptionAccess::class,
+            'subscription.required' => \App\Http\Middleware\RequireActiveSubscription::class,
             'free.quota' => \App\Http\Middleware\CheckFreeQuota::class,
             'ability' => \Laravel\Sanctum\Http\Middleware\CheckForAnyAbility::class,
 

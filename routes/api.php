@@ -67,22 +67,18 @@ Route::middleware(['auth:sanctum', 'ability:access'])->group(function () {
 
     Route::get('/exam-attempts/history', [SimulationExamController::class, 'history']);
 
-
+    // Free-quota gating (BR-01) is handled inside QuestionController itself,
+    // since it depends on the specific question requested — not a blanket
+    // "used >= limit" check a generic middleware can make.
+    Route::get('/questions', [QuestionController::class, 'index']);
+    Route::get('/questions/{id}', [QuestionController::class, 'show']);
+    Route::post('/questions/{id}/check-answer', [QuestionController::class, 'checkAnswer']);
 
 });
 Route::middleware(['auth:sanctum', 'ability:access', 'subscription'])->group(function () {
-    Route::get('/questions', [QuestionController::class, 'index']);
-    Route::get('/questions/{id}', [QuestionController::class, 'show']);
-
     Route::get('/simulation-exams', [SimulationExamController::class, 'index']);
-
 });
 
 Route::middleware(['auth:sanctum', 'ability:access', 'subscription.required'])->group(function () {
     Route::post('/simulation-exams/{examId}/start', [SimulationExamController::class, 'start']);
 });
-
-Route::middleware(['auth:sanctum', 'ability:access', 'free.quota'])->group(function () {
-    Route::post('/questions/{id}/check-answer', [QuestionController::class, 'checkAnswer']);
-
-    });

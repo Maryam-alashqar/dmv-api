@@ -116,6 +116,14 @@ public function questionViews()
     return $this->hasMany(UserQuestionView::class);
 }
 
+public function hasActiveSubscription(): bool
+{
+    return $this->subscriptions()
+        ->where('status', 'active')
+        ->where('expiry_date', '>=', now())
+        ->exists();
+}
+
 public function verificationCodes()
 {
     return $this->hasMany(VerificationCode::class);

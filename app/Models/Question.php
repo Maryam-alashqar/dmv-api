@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Storage;
 
 class Question extends Model
 {
@@ -22,6 +24,10 @@ class Question extends Model
     'option_b_en',
     'option_c_en',
     'option_d_en',
+    'option_a_image',
+    'option_b_image',
+    'option_c_image',
+    'option_d_image',
     'correct_answer',
     'explanation_ar',
     'difficulty_level',
@@ -42,5 +48,44 @@ public function category()
 public function userAnswers()
 {
     return $this->hasMany(UserAnswer::class);
+}
+
+/**
+ * These columns store the relative path on the "public" disk (whatever
+ * the admin form's FileUpload saved); resolving to a full URL here means
+ * every consumer (mobile API response, admin panel) gets the same
+ * ready-to-display URL, and the storage backend can move to S3/CDN later
+ * (per the SRS) by changing only the disk config.
+ */
+protected function imageUrl(): Attribute
+{
+    return $this->diskUrlAttribute();
+}
+
+protected function optionAImage(): Attribute
+{
+    return $this->diskUrlAttribute();
+}
+
+protected function optionBImage(): Attribute
+{
+    return $this->diskUrlAttribute();
+}
+
+protected function optionCImage(): Attribute
+{
+    return $this->diskUrlAttribute();
+}
+
+protected function optionDImage(): Attribute
+{
+    return $this->diskUrlAttribute();
+}
+
+private function diskUrlAttribute(): Attribute
+{
+    return Attribute::make(
+        get: fn (?string $value) => $value ? Storage::disk('public')->url($value) : null,
+    );
 }
 }

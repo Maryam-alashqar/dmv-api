@@ -29,6 +29,26 @@ class QuestionsTable
                 ImageColumn::make('image_url')
                 ->disk('public')
                 ->square(),
+                ImageColumn::make('option_a_image')
+                    ->label('A')
+                    ->disk('public')
+                    ->square()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                ImageColumn::make('option_b_image')
+                    ->label('B')
+                    ->disk('public')
+                    ->square()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                ImageColumn::make('option_c_image')
+                    ->label('C')
+                    ->disk('public')
+                    ->square()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                ImageColumn::make('option_d_image')
+                    ->label('D')
+                    ->disk('public')
+                    ->square()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('correct_answer')
                     ->badge(),
                 TextColumn::make('difficulty_level')

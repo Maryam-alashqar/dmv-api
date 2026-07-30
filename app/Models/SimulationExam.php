@@ -15,6 +15,10 @@ class SimulationExam extends Model
     'is_published',
 ];
 
+protected $casts = [
+    'is_published' => 'boolean',
+];
+
 public function state()
 {
     return $this->belongsTo(State::class);

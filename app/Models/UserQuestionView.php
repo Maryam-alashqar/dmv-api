@@ -10,10 +10,12 @@ class UserQuestionView extends Model
         'user_id',
         'question_id',
         'viewed_at',
+        'answered_at',
     ];
 
     protected $casts = [
         'viewed_at' => 'datetime',
+        'answered_at' => 'datetime',
     ];
 
     public function user()

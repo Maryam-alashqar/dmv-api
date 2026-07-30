@@ -45,7 +45,9 @@ class QuestionController extends Controller
 
         $questions = $query->whereIn('id', $questionIds)->get();
 
-        return $this->successResponse($questions, 'Questions retrieved successfully');
+        return $this->successResponse($questions, 'Questions retrieved successfully', 200, [
+            'quota' => $this->freeQuotaSummary($user),
+        ]);
     }
 
     public function show(Request $request, $id)
@@ -85,17 +87,35 @@ class QuestionController extends Controller
         if (! $hasActiveSubscription) {
             $this->ensureFreeQuestionSetAssigned($user);
 
-            if (! $this->isInFreeQuestionSet($user, $question->id)) {
+            $view = $user->questionViews()->where('question_id', $question->id)->first();
+
+            if (! $view) {
                 return $this->freeQuotaExceededResponse($user);
+            }
+
+            // First attempt at this question (right or wrong) is what
+            // "uses up" a slot in the free set — re-answering it again
+            // afterwards doesn't consume anything further.
+            if (! $view->answered_at) {
+                $view->update(['answered_at' => now()]);
             }
         }
 
         $isCorrect = $request->selected_answer === $question->correct_answer;
 
-        $freeQuotaLimit = Setting::get('free_questions_limit', config('dmv.free_questions_limit', 10));
-        $remainingFreeQuestions = $hasActiveSubscription
-            ? null
-            : max(0, $freeQuotaLimit - $user->questionViews()->count());
+        $subscription = $hasActiveSubscription
+            ? [
+                'has_active_subscription' => true,
+                'free_questions_used' => null,
+                'free_questions_limit' => null,
+                'remaining_free_questions' => null,
+                'upgrade_required' => false,
+            ]
+            : array_merge(
+                ['has_active_subscription' => false],
+                $quota = $this->freeQuotaSummary($user),
+                ['upgrade_required' => $quota['remaining_free_questions'] === 0],
+            );
 
         return $this->successResponse([
             'question_id' => $question->id,
@@ -103,14 +123,7 @@ class QuestionController extends Controller
             'is_correct' => $isCorrect,
             'correct_answer' => $question->correct_answer,
             'explanation_ar' => $question->explanation_ar,
-
-            'subscription' => [
-                'has_active_subscription' => $hasActiveSubscription,
-                'free_questions_used' => $hasActiveSubscription ? null : $user->questionViews()->count(),
-                'free_questions_limit' => $hasActiveSubscription ? null : $freeQuotaLimit,
-                'remaining_free_questions' => $remainingFreeQuestions,
-                'upgrade_required' => ! $hasActiveSubscription && $remainingFreeQuestions === 0,
-            ],
+            'subscription' => $subscription,
         ], 'Answer checked successfully');
     }
 
@@ -142,8 +155,6 @@ class QuestionController extends Controller
                 'viewed_at' => now(),
             ]);
         }
-
-        $user->update(['free_questions_used' => $questionIds->count()]);
     }
 
     private function isInFreeQuestionSet(User $user, int $questionId): bool
@@ -151,16 +162,35 @@ class QuestionController extends Controller
         return $user->questionViews()->where('question_id', $questionId)->exists();
     }
 
+    /**
+     * "Used" means answered (right or wrong), not merely assigned — the
+     * fixed set of 10 is granted upfront, but progress/remaining only moves
+     * as the student actually attempts questions from it.
+     */
+    private function freeQuotaSummary(User $user): array
+    {
+        $limit = Setting::get('free_questions_limit', config('dmv.free_questions_limit', 10));
+        $used = $user->questionViews()->whereNotNull('answered_at')->count();
+
+        $user->update(['free_questions_used' => $used]);
+
+        return [
+            'free_questions_used' => $used,
+            'free_questions_limit' => $limit,
+            'remaining_free_questions' => max(0, $limit - $used),
+        ];
+    }
+
     private function freeQuotaExceededResponse(User $user)
     {
-        $freeQuotaLimit = Setting::get('free_questions_limit', config('dmv.free_questions_limit', 10));
+        $quota = $this->freeQuotaSummary($user);
 
         return response()->json([
             'success' => false,
             'message' => 'Free question quota exceeded. Please upgrade your subscription.',
             'data' => [
-                'free_questions_used' => $user->questionViews()->count(),
-                'free_questions_limit' => $freeQuotaLimit,
+                'free_questions_used' => $quota['free_questions_used'],
+                'free_questions_limit' => $quota['free_questions_limit'],
                 'upgrade_required' => true,
             ],
         ], 403);

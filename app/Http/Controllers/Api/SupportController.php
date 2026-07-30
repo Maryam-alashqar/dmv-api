@@ -3,9 +3,35 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\SupportMessage;
+use Illuminate\Http\Request;
 
 class SupportController extends Controller
 {
+    public function contact(Request $request)
+    {
+        $request->validate([
+            'subject' => 'nullable|string|max:255',
+            'message' => 'required|string|max:2000',
+        ]);
+
+        $user = $request->user();
+
+        SupportMessage::create([
+            'user_id' => $user->id,
+            'name' => $user->full_name,
+            'email' => $user->email,
+            'phone_number' => $user->phone_number,
+            'subject' => $request->subject,
+            'message' => $request->message,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Your message has been sent. Our support team will get back to you soon.',
+        ]);
+    }
+
     public function about()
     {
         return response()->json([

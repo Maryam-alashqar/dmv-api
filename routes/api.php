@@ -74,6 +74,8 @@ Route::middleware(['auth:sanctum', 'ability:access'])->group(function () {
     Route::get('/questions/{id}', [QuestionController::class, 'show']);
     Route::post('/questions/{id}/check-answer', [QuestionController::class, 'checkAnswer']);
 
+    Route::post('/support/contact', [SupportController::class, 'contact']);
+
 });
 Route::middleware(['auth:sanctum', 'ability:access', 'subscription'])->group(function () {
     Route::get('/simulation-exams', [SimulationExamController::class, 'index']);

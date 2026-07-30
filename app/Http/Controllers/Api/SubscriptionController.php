@@ -12,6 +12,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Stripe\Exception\SignatureVerificationException;
 use Stripe\PaymentIntent;
+use Stripe\Stripe;
 use Stripe\StripeClient;
 use Stripe\Webhook;
 use Throwable;
@@ -31,6 +32,10 @@ class SubscriptionController extends Controller
         $request->validate([
             'package_id' => 'required|exists:subscription_packages,id',
             'platform' => 'required|in:android,web',
+            // Client-generated key: sending the same value on a retry (timeout,
+            // dropped connection, accidental double-tap) makes Stripe return the
+            // original PaymentIntent instead of creating a second charge.
+            'idempotency_key' => 'nullable|string|max:255',
         ]);
 
         $user = $request->user();
@@ -85,14 +90,25 @@ class SubscriptionController extends Controller
                 ]);
             }
 
+            // Falls back to a key stable for one minute so an accidental double-tap
+            // or an automatic client retry after a timeout can't double-charge the
+            // user, while a genuinely new purchase attempt a minute later still
+            // gets its own PaymentIntent.
+            $idempotencyKey = $request->string('idempotency_key')->toString()
+                ?: hash('sha256', "subscribe:{$user->id}:{$package->id}:" . now()->format('YmdHi'));
+
             $paymentIntent = $stripe->paymentIntents->create([
                 'amount' => $amountInCents,
                 'currency' => 'usd',
 
                 'customer' => $user->stripe_customer_id,
 
+                // Card/wallet payments only (matches the payment_method enum: no
+                // bank-redirect methods are supported), so we don't need the mobile
+                // app to implement a return_url / deep-link just to confirm a payment.
                 'automatic_payment_methods' => [
                     'enabled' => true,
+                    'allow_redirects' => 'never',
                 ],
 
                 'metadata' => [
@@ -102,21 +118,43 @@ class SubscriptionController extends Controller
                 ],
 
                 'description' => 'DMV subscription: ' . $package->name_en,
+            ], [
+                'idempotency_key' => $idempotencyKey,
             ]);
 
-            $payment = Payment::create([
-                'user_id' => $user->id,
-                'package_id' => $package->id,
-                'amount_usd' => $package->price_usd,
-                'payment_method' => 'stripe',
-                'stripe_payment_intent_id' => $paymentIntent->id,
-                'payment_status' => 'pending',
-            ]);
+            // Stripe returns the *same* PaymentIntent id for a retried idempotency
+            // key, so keying on it here prevents a duplicate local Payment row too.
+            $payment = Payment::firstOrCreate(
+                ['stripe_payment_intent_id' => $paymentIntent->id],
+                [
+                    'user_id' => $user->id,
+                    'package_id' => $package->id,
+                    'amount_usd' => $package->price_usd,
+                    'payment_method' => 'stripe',
+                    'payment_status' => 'pending',
+                ]
+            );
+
+            // Required by the Stripe Mobile Payment Sheet (iOS/Android SDKs) so it
+            // can attach the confirmed payment method to the customer and offer
+            // saved cards on future purchases; must be pinned to the API version
+            // the calling SDK was built against.
+            $stripeVersion = $request->header('Stripe-Version')
+                ?: $request->string('stripe_version')->toString()
+                ?: Stripe::getApiVersion();
+
+            $ephemeralKey = $stripe->ephemeralKeys->create(
+                ['customer' => $user->stripe_customer_id],
+                ['stripe_version' => $stripeVersion]
+            );
 
             return $this->successResponse([
                 'payment_id' => $payment->id,
                 'payment_intent_id' => $paymentIntent->id,
                 'client_secret' => $paymentIntent->client_secret,
+
+                'customer_id' => $user->stripe_customer_id,
+                'ephemeral_key' => $ephemeralKey->secret,
 
                 'package' => [
                     'id' => $package->id,

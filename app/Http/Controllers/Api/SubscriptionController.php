@@ -31,7 +31,7 @@ class SubscriptionController extends Controller
     {
         $request->validate([
             'package_id' => 'required|exists:subscription_packages,id',
-            'platform' => 'required|in:android,web',
+            'platform' => 'required|in:android,web,ios,desktop,other',
             // Client-generated key: sending the same value on a retry (timeout,
             // dropped connection, accidental double-tap) makes Stripe return the
             // original PaymentIntent instead of creating a second charge.

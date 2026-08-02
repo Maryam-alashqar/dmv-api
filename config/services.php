@@ -58,4 +58,10 @@ return [
         'credentials_path' => env('FIREBASE_CREDENTIALS_PATH'),
     ],
 
+    'twilio' => [
+        'sid' => env('TWILIO_SID'),
+        'auth_token' => env('TWILIO_AUTH_TOKEN'),
+        'from' => env('TWILIO_FROM_NUMBER'),
+    ],
+
 ];

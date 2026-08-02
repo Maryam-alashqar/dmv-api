@@ -141,11 +141,21 @@ class User extends Authenticatable implements FilamentUser, HasName
         $averageScore = round((float) ((clone $attempts)->avg('score') ?? 0), 2);
         $latestScore = (clone $attempts)->latest('created_at')->value('score');
 
+        // Counts every checked answer across all of the user's attempts —
+        // formal simulation exams and free/practice question-checking alike
+        // (practice attempts use a null exam_id, see QuestionController::
+        // recordPracticeAnswer) — not just completed exams.
+        $answers = UserAnswer::whereHas('attempt', fn ($q) => $q->where('user_id', $this->id));
+        $questionsAnswered = (clone $answers)->count();
+        $questionsCorrect = (clone $answers)->where('is_correct', true)->count();
+
         $this->setAttribute('progress', [
             'completed_exams' => $completedExams,
             'passed_exams' => (clone $attempts)->where('passed', true)->count(),
             'average_score' => $averageScore,
             'latest_score' => $latestScore !== null ? (float) $latestScore : null,
+            'questions_answered' => $questionsAnswered,
+            'questions_correct' => $questionsCorrect,
         ]);
 
         $this->setAttribute('subscription_type', $subscription?->package?->name_en ?? 'free');
@@ -157,6 +167,13 @@ class User extends Authenticatable implements FilamentUser, HasName
             'auto_renewal' => $subscription->auto_renewal,
             'package' => $subscription->package,
         ] : null);
+
+        // These are computed, display-only fields, not real columns — without
+        // this, Eloquent treats them as dirty, and any later save()/update()
+        // on this same model instance (e.g. a subsequent request reusing a
+        // cached auth user, or another call further down the same request)
+        // would try to write them to the users table and crash.
+        $this->syncOriginal();
 
         return $this;
     }

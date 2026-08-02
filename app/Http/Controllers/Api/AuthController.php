@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\SmsService;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -39,11 +40,10 @@ class AuthController extends Controller
 
         $code = $this->issueVerificationCode($user);
 
-        return $this->successResponse([
+        return $this->successResponse(array_merge([
             'user_id' => $user->id,
             'phone_number' => $user->phone_number,
-            'verification_code_for_testing' => $code,
-        ], 'Account created. Verification code sent to phone.', 201);
+        ], $this->debugVerificationCode($code)), 'Account created. Verification code sent to phone.', 201);
     }
 
     public function verify(Request $request)
@@ -118,7 +118,8 @@ class AuthController extends Controller
             ];
 
             if ($recentCodesCount < 3) {
-                $errors['verification_code_for_testing'] = $this->issueVerificationCode($user);
+                $code = $this->issueVerificationCode($user);
+                $errors = array_merge($errors, $this->debugVerificationCode($code));
                 $message = 'Account not verified yet. A new verification code has been sent.';
             } else {
                 $message = 'Account not verified yet. Please verify using your existing code, or try again later.';
@@ -203,7 +204,8 @@ class AuthController extends Controller
     }
 
     /**
-     * Generate a 6-digit verification code (5 min expiry) and record it for the user.
+     * Generate a 6-digit verification code (5 min expiry), record it for the
+     * user, and text it to their phone.
      */
     private function issueVerificationCode(User $user): string
     {
@@ -216,7 +218,24 @@ class AuthController extends Controller
             'used' => false,
         ]);
 
+        app(SmsService::class)->send(
+            $user->phone_number,
+            "Your DMV verification code is {$code}. It expires in 5 minutes."
+        );
+
         return $code;
+    }
+
+    /**
+     * The raw code is only echoed back in the API response outside of
+     * production (local dev / automated tests, where no real SMS provider
+     * is configured) — in production it must only ever reach the user via
+     * the actual SMS, otherwise anyone could "verify" a phone number they
+     * don't own just by reading the API response.
+     */
+    private function debugVerificationCode(string $code): array
+    {
+        return app()->environment('production') ? [] : ['verification_code_for_testing' => $code];
     }
 
     /**
@@ -478,10 +497,9 @@ class AuthController extends Controller
 
         $code = $this->issueVerificationCode($user);
 
-        return $this->successResponse([
+        return $this->successResponse(array_merge([
             'phone_number' => $user->phone_number,
-            'verification_code_for_testing' => $code,
-        ], 'Verification code resent successfully.');
+        ], $this->debugVerificationCode($code)), 'Verification code resent successfully.');
     }
 
     public function forgotPassword(Request $request)
@@ -492,18 +510,12 @@ class AuthController extends Controller
 
         $user = User::where('phone_number', $request->phone_number)->first();
 
-        $code = (string) rand(100000, 999999);
+        $code = $this->issueVerificationCode($user);
 
-        $user->verificationCodes()->create([
-            'phone_number' => $user->phone_number,
-            'code' => $code,
-            'expires_at' => now()->addMinutes(5),
-            'used' => false,
-        ]);
-
-        return $this->successResponse([
-            'verification_code_for_testing' => $code,
-        ], 'Password reset code sent successfully.');
+        return $this->successResponse(
+            $this->debugVerificationCode($code),
+            'Password reset code sent successfully.'
+        );
     }
 
     public function resetPassword(Request $request)

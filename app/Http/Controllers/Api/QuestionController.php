@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\ExamAttempt;
 use App\Models\Question;
 use App\Models\Setting;
 use App\Models\User;
+use App\Models\UserAnswer;
 use Illuminate\Http\Request;
 use App\Traits\ApiResponseTrait;
 
@@ -103,6 +105,8 @@ class QuestionController extends Controller
 
         $isCorrect = $request->selected_answer === $question->correct_answer;
 
+        $this->recordPracticeAnswer($user, $question, $request->selected_answer, $isCorrect);
+
         $subscription = $hasActiveSubscription
             ? [
                 'has_active_subscription' => true,
@@ -125,6 +129,30 @@ class QuestionController extends Controller
             'explanation_ar' => $question->explanation_ar,
             'subscription' => $subscription,
         ], 'Answer checked successfully');
+    }
+
+    /**
+     * Records an answer checked outside of a formal simulation exam (free
+     * practice, whether the user is subscribed or on the free quota) so it
+     * still counts toward the user's overall progress stats — per the SRS
+     * data model, Exam_Attempt.exam_id is nullable specifically "for
+     * free-practice attempts". Re-checking the same question again is a
+     * no-op (firstOrCreate), matching the free-quota "first attempt only"
+     * semantics used elsewhere.
+     */
+    private function recordPracticeAnswer(User $user, Question $question, string $selectedAnswer, bool $isCorrect): void
+    {
+        $attempt = ExamAttempt::firstOrCreate(
+            ['user_id' => $user->id, 'exam_id' => null, 'completion_status' => 'in_progress'],
+            // state_id is a required column; the question's own state is always
+            // present, whereas the user's selected_state_id might not be.
+            ['state_id' => $user->selected_state_id ?: $question->state_id, 'start_time' => now(), 'total_questions' => 0]
+        );
+
+        UserAnswer::firstOrCreate(
+            ['attempt_id' => $attempt->id, 'question_id' => $question->id],
+            ['selected_answer' => $selectedAnswer, 'is_correct' => $isCorrect, 'answered_at' => now()]
+        );
     }
 
     /**

@@ -66,12 +66,16 @@ class FcmPushService
         $path = config('services.fcm.credentials_path');
 
         if (! $path || ! is_file($path)) {
+            Log::warning('FCM credentials file not found; push not sent.', ['configured_path' => $path]);
+
             return null;
         }
 
         $credentials = json_decode((string) file_get_contents($path), true);
 
         if (! is_array($credentials) || empty($credentials['client_email']) || empty($credentials['private_key']) || empty($credentials['project_id'])) {
+            Log::warning('FCM credentials file is malformed; push not sent.', ['path' => $path]);
+
             return null;
         }
 

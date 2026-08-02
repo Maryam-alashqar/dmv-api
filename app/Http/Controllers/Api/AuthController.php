@@ -4,13 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Traits\ApiResponseTrait;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
-use App\Traits\ApiResponseTrait;
-use Illuminate\Support\Facades\Storage;
 
 class AuthController extends Controller
 {
@@ -57,7 +57,7 @@ class AuthController extends Controller
 
         if ($user->verification_status) {
             return $this->successResponse(array_merge([
-                'user' => $user,
+                'user' => $user->withProfileSummary(),
             ], $this->issueTokens($user)), 'Account already verified.');
         }
 
@@ -84,7 +84,7 @@ class AuthController extends Controller
         ]);
 
         return $this->successResponse(array_merge([
-            'user' => $user->fresh(),
+            'user' => $user->fresh()->withProfileSummary(),
         ], $this->issueTokens($user)), 'Account verified successfully.');
     }
 
@@ -132,7 +132,7 @@ class AuthController extends Controller
         ]);
 
         return $this->successResponse(array_merge([
-            'user' => $user,
+            'user' => $user->withProfileSummary(),
         ], $this->issueTokens($user)), 'Logged in successfully.');
     }
 
@@ -176,7 +176,7 @@ class AuthController extends Controller
         $user->update(['last_login' => now()]);
 
         return $this->successResponse(array_merge([
-            'user' => $user->fresh(),
+            'user' => $user->fresh()->withProfileSummary(),
         ], $this->issueTokens($user)), 'Signed in successfully.');
     }
 
@@ -301,7 +301,7 @@ class AuthController extends Controller
         $publicKey = $this->jwkToPem($key['n'], $key['e']);
 
         $verified = openssl_verify(
-            $headerB64 . '.' . $payloadB64,
+            $headerB64.'.'.$payloadB64,
             $signature,
             $publicKey,
             OPENSSL_ALGO_SHA256
@@ -335,16 +335,16 @@ class AuthController extends Controller
         $modulus = $this->encodeDerInteger($this->base64UrlDecode($n));
         $exponent = $this->encodeDerInteger($this->base64UrlDecode($e));
 
-        $rsaPublicKey = $this->encodeDerSequence($modulus . $exponent);
+        $rsaPublicKey = $this->encodeDerSequence($modulus.$exponent);
 
         $algorithmIdentifier = pack('H*', '300d06092a864886f70d0101010500');
-        $bitString = "\x03" . $this->encodeDerLength(strlen($rsaPublicKey) + 1) . "\x00" . $rsaPublicKey;
+        $bitString = "\x03".$this->encodeDerLength(strlen($rsaPublicKey) + 1)."\x00".$rsaPublicKey;
 
-        $publicKeyInfo = $this->encodeDerSequence($algorithmIdentifier . $bitString);
+        $publicKeyInfo = $this->encodeDerSequence($algorithmIdentifier.$bitString);
 
         return "-----BEGIN PUBLIC KEY-----\n"
-            . chunk_split(base64_encode($publicKeyInfo), 64, "\n")
-            . "-----END PUBLIC KEY-----\n";
+            .chunk_split(base64_encode($publicKeyInfo), 64, "\n")
+            ."-----END PUBLIC KEY-----\n";
     }
 
     private function encodeDerLength(int $length): string
@@ -355,31 +355,34 @@ class AuthController extends Controller
 
         $bytes = ltrim(pack('N', $length), "\x00");
 
-        return chr(0x80 | strlen($bytes)) . $bytes;
+        return chr(0x80 | strlen($bytes)).$bytes;
     }
 
     private function encodeDerInteger(string $bytes): string
     {
-        if (ord($bytes[0]) > 0x7f) {
-            $bytes = "\x00" . $bytes;
+        if (ord($bytes[0]) > 0x7F) {
+            $bytes = "\x00".$bytes;
         }
 
-        return "\x02" . $this->encodeDerLength(strlen($bytes)) . $bytes;
+        return "\x02".$this->encodeDerLength(strlen($bytes)).$bytes;
     }
 
     private function encodeDerSequence(string $bytes): string
     {
-        return "\x30" . $this->encodeDerLength(strlen($bytes)) . $bytes;
+        return "\x30".$this->encodeDerLength(strlen($bytes)).$bytes;
     }
 
     private function base64UrlDecode(string $data): string
     {
-        return base64_decode(strtr($data, '-_', '+/') . str_repeat('=', (4 - strlen($data) % 4) % 4));
+        return base64_decode(strtr($data, '-_', '+/').str_repeat('=', (4 - strlen($data) % 4) % 4));
     }
 
     public function profile(Request $request)
     {
-        return $this->successResponse($request->user(), 'Profile retrieved successfully.');
+        return $this->successResponse(
+            $request->user()->load('selectedState')->withProfileSummary(),
+            'Profile retrieved successfully.'
+        );
     }
 
     public function updateSelectedState(Request $request)
@@ -395,14 +398,14 @@ class AuthController extends Controller
         ]);
 
         return $this->successResponse([
-            'user' => $user->fresh('selectedState'),
+            'user' => $user->fresh('selectedState')->withProfileSummary(),
         ], 'Selected state updated successfully.');
     }
 
     public function updateFcmToken(Request $request)
     {
         $request->validate([
-            'fcm_token' => 'required|string',
+            'fcm_token' => 'required|string|max:4096',
         ]);
 
         $request->user()->update([
@@ -416,8 +419,8 @@ class AuthController extends Controller
     {
         $request->validate([
             'full_name' => 'nullable|string|max:255',
-            'email' => 'nullable|email|unique:users,email,' . $request->user()->id,
-            'phone_number' => 'nullable|string|unique:users,phone_number,' . $request->user()->id,
+            'email' => 'nullable|email|unique:users,email,'.$request->user()->id,
+            'phone_number' => 'nullable|string|unique:users,phone_number,'.$request->user()->id,
             'preferred_language' => 'nullable|in:ar,en',
         ]);
 
@@ -430,7 +433,7 @@ class AuthController extends Controller
             'preferred_language',
         ]));
 
-        return $this->successResponse($user->fresh(), 'Profile updated successfully.');
+        return $this->successResponse($user->fresh()->withProfileSummary(), 'Profile updated successfully.');
     }
 
     public function changePassword(Request $request)
@@ -452,130 +455,132 @@ class AuthController extends Controller
 
         return $this->successResponse(null, 'Password changed successfully.');
     }
+
     public function resendVerificationCode(Request $request)
-{
-    $request->validate([
-        'phone_number' => 'required|string|exists:users,phone_number',
-    ]);
+    {
+        $request->validate([
+            'phone_number' => 'required|string|exists:users,phone_number',
+        ]);
 
-    $user = User::where('phone_number', $request->phone_number)->first();
+        $user = User::where('phone_number', $request->phone_number)->first();
 
-    if ($user->verification_status) {
-        return $this->errorResponse('Account is already verified.', 422);
+        if ($user->verification_status) {
+            return $this->errorResponse('Account is already verified.', 422);
+        }
+
+        $recentCodesCount = $user->verificationCodes()
+            ->where('created_at', '>=', now()->subHour())
+            ->count();
+
+        if ($recentCodesCount >= 3) {
+            return $this->errorResponse('Maximum resend attempts reached. Try again later.', 429);
+        }
+
+        $code = $this->issueVerificationCode($user);
+
+        return $this->successResponse([
+            'phone_number' => $user->phone_number,
+            'verification_code_for_testing' => $code,
+        ], 'Verification code resent successfully.');
     }
 
-    $recentCodesCount = $user->verificationCodes()
-        ->where('created_at', '>=', now()->subHour())
-        ->count();
+    public function forgotPassword(Request $request)
+    {
+        $request->validate([
+            'phone_number' => 'required|string|exists:users,phone_number',
+        ]);
 
-    if ($recentCodesCount >= 3) {
-        return $this->errorResponse('Maximum resend attempts reached. Try again later.', 429);
+        $user = User::where('phone_number', $request->phone_number)->first();
+
+        $code = (string) rand(100000, 999999);
+
+        $user->verificationCodes()->create([
+            'phone_number' => $user->phone_number,
+            'code' => $code,
+            'expires_at' => now()->addMinutes(5),
+            'used' => false,
+        ]);
+
+        return $this->successResponse([
+            'verification_code_for_testing' => $code,
+        ], 'Password reset code sent successfully.');
     }
 
-    $code = $this->issueVerificationCode($user);
+    public function resetPassword(Request $request)
+    {
+        $request->validate([
+            'phone_number' => 'required|string|exists:users,phone_number',
+            'code' => 'required|digits:6',
+            'password' => 'required|string|min:8|confirmed',
+        ]);
 
-    return $this->successResponse([
-        'phone_number' => $user->phone_number,
-        'verification_code_for_testing' => $code,
-    ], 'Verification code resent successfully.');
-}
+        $user = User::where('phone_number', $request->phone_number)->first();
 
-public function forgotPassword(Request $request)
-{
-    $request->validate([
-        'phone_number' => 'required|string|exists:users,phone_number',
-    ]);
+        $verification = $user->verificationCodes()
+            ->where('code', $request->code)
+            ->where('used', false)
+            ->latest()
+            ->first();
 
-    $user = User::where('phone_number', $request->phone_number)->first();
+        if (! $verification) {
+            return $this->errorResponse('Invalid verification code.', 422);
+        }
 
-    $code = (string) rand(100000, 999999);
+        if ($verification->expires_at->isPast()) {
+            return $this->errorResponse('Verification code has expired.', 422);
+        }
 
-    $user->verificationCodes()->create([
-        'phone_number' => $user->phone_number,
-        'code' => $code,
-        'expires_at' => now()->addMinutes(5),
-        'used' => false,
-    ]);
+        $verification->update([
+            'used' => true,
+        ]);
 
-    return $this->successResponse([
-        'verification_code_for_testing' => $code,
-    ], 'Password reset code sent successfully.');
-}
+        $user->update([
+            'password' => Hash::make($request->password),
+        ]);
 
-public function resetPassword(Request $request)
-{
-    $request->validate([
-        'phone_number' => 'required|string|exists:users,phone_number',
-        'code' => 'required|digits:6',
-        'password' => 'required|string|min:8|confirmed',
-    ]);
-
-    $user = User::where('phone_number', $request->phone_number)->first();
-
-    $verification = $user->verificationCodes()
-        ->where('code', $request->code)
-        ->where('used', false)
-        ->latest()
-        ->first();
-
-    if (! $verification) {
-        return $this->errorResponse('Invalid verification code.', 422);
+        return $this->successResponse(null, 'Password reset successfully.');
     }
 
-    if ($verification->expires_at->isPast()) {
-        return $this->errorResponse('Verification code has expired.', 422);
+    public function updateProfilePhoto(Request $request)
+    {
+        $request->validate([
+            'photo' => 'required|image|mimes:jpg,jpeg,png,webp|max:2048',
+        ]);
+
+        $user = $request->user();
+
+        $oldPath = $user->getRawOriginal('profile_photo_url');
+
+        if ($oldPath && Storage::disk('public')->exists($oldPath)) {
+            Storage::disk('public')->delete($oldPath);
+        }
+
+        $path = $request->file('photo')->store('profile-photos', 'public');
+
+        $user->update([
+            'profile_photo_url' => $path,
+        ]);
+
+        return $this->successResponse([
+            'profile_photo_url' => $user->fresh()->profile_photo_url,
+            'user' => $user->fresh()->withProfileSummary(),
+        ], 'Profile photo updated successfully.');
     }
 
-    $verification->update([
-        'used' => true,
-    ]);
+    public function deleteAccount(Request $request)
+    {
+        $user = $request->user();
 
-    $user->update([
-        'password' => Hash::make($request->password),
-    ]);
+        $user->tokens()->delete();
 
-    return $this->successResponse(null, 'Password reset successfully.');
-}
+        $user->update([
+            'account_status' => 'disabled',
+            'email' => $user->email ? 'deleted_'.$user->id.'_'.$user->email : null,
+            'phone_number' => $user->phone_number ? 'deleted_'.$user->id.'_'.$user->phone_number : null,
+            'full_name' => 'Deleted User',
+            'profile_photo_url' => null,
+        ]);
 
-public function updateProfilePhoto(Request $request)
-{
-    $request->validate([
-        'photo' => 'required|image|mimes:jpg,jpeg,png,webp|max:2048',
-    ]);
-
-    $user = $request->user();
-
-    $oldPath = $user->getRawOriginal('profile_photo_url');
-
-    if ($oldPath && Storage::disk('public')->exists($oldPath)) {
-        Storage::disk('public')->delete($oldPath);
+        return $this->successResponse(null, 'Account deleted successfully.');
     }
-
-    $path = $request->file('photo')->store('profile-photos', 'public');
-
-    $user->update([
-        'profile_photo_url' => $path,
-    ]);
-
-    return $this->successResponse([
-        'profile_photo_url' => $user->fresh()->profile_photo_url,
-    ], 'Profile photo updated successfully.');
-}
-
-public function deleteAccount(Request $request)
-{
-    $user = $request->user();
-
-    $user->tokens()->delete();
-
-    $user->update([
-        'account_status' => 'disabled',
-        'email' => $user->email ? 'deleted_' . $user->id . '_' . $user->email : null,
-        'phone_number' => $user->phone_number ? 'deleted_' . $user->id . '_' . $user->phone_number : null,
-        'full_name' => 'Deleted User',
-        'profile_photo_url' => null,
-    ]);
-
-    return $this->successResponse(null, 'Account deleted successfully.');
-}
 }

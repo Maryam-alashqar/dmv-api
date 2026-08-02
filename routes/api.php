@@ -1,15 +1,14 @@
 <?php
 
-use Illuminate\Http\Request;
+use App\Http\Controllers\Api\AnalyticsController;
 use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\StateController;
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\QuestionController;
 use App\Http\Controllers\Api\SimulationExamController;
-use App\Http\Controllers\Api\SubscriptionPackageController;
+use App\Http\Controllers\Api\StateController;
 use App\Http\Controllers\Api\SubscriptionController;
-use App\Http\Controllers\Api\AnalyticsController;
-use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\SubscriptionPackageController;
 use App\Http\Controllers\Api\SupportController;
 use Illuminate\Support\Facades\Route;
 
@@ -45,6 +44,8 @@ Route::middleware(['auth:sanctum', 'ability:access'])->group(function () {
     Route::put('/users/profile', [AuthController::class, 'updateProfile']);
     Route::put('/users/change-password', [AuthController::class, 'changePassword']);
     Route::patch('/users/profile-photo', [AuthController::class, 'updateProfilePhoto']);
+    // Multipart file uploads are reliably parsed as POST by PHP clients.
+    Route::post('/users/profile-photo', [AuthController::class, 'updateProfilePhoto']);
     Route::delete('/users/account', [AuthController::class, 'deleteAccount']);
     //
     Route::post('/exam-attempts/{attemptId}/answers', [SimulationExamController::class, 'saveAnswer']);

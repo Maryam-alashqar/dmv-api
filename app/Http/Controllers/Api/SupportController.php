@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Setting;
 use App\Models\SupportMessage;
 use Illuminate\Http\Request;
 
@@ -37,9 +38,10 @@ class SupportController extends Controller
         return response()->json([
             'success' => true,
             'data' => [
-                'app_name' => 'DMV Arabic Exam Simulator',
-                'version' => '1.0.0',
-                'description' => 'Arabic DMV exam preparation platform for Arabic-speaking communities in the United States.',
+                'title_ar' => Setting::get('about_title_ar', 'من نحن'),
+                'title_en' => Setting::get('about_title_en', 'About Us'),
+                'content_ar' => Setting::get('about_content_ar', ''),
+                'content_en' => Setting::get('about_content_en', ''),
             ],
         ]);
     }
@@ -49,8 +51,10 @@ class SupportController extends Controller
         return response()->json([
             'success' => true,
             'data' => [
-                'title' => 'Privacy Policy',
-                'content' => 'Privacy Policy content will be added here.',
+                'title_ar' => Setting::get('privacy_title_ar', 'سياسة الخصوصية'),
+                'title_en' => Setting::get('privacy_title_en', 'Privacy Policy'),
+                'content_ar' => Setting::get('privacy_content_ar', ''),
+                'content_en' => Setting::get('privacy_content_en', ''),
             ],
         ]);
     }
@@ -60,8 +64,10 @@ class SupportController extends Controller
         return response()->json([
             'success' => true,
             'data' => [
-                'title' => 'Terms of Use',
-                'content' => 'Terms of Use content will be added here.',
+                'title_ar' => Setting::get('terms_title_ar', 'الشروط والأحكام'),
+                'title_en' => Setting::get('terms_title_en', 'Terms of Use'),
+                'content_ar' => Setting::get('terms_content_ar', ''),
+                'content_en' => Setting::get('terms_content_en', ''),
             ],
         ]);
     }

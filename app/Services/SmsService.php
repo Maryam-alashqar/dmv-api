@@ -26,7 +26,7 @@ class SmsService
         }
 
         try {
-            (new Client($sid, $authToken))->messages->create($phoneNumber, [
+            (new Client($sid, $authToken))->messages->create($this->toE164($phoneNumber), [
                 'from' => $from,
                 'body' => $message,
             ]);
@@ -40,5 +40,28 @@ class SmsService
 
             return false;
         }
+    }
+
+    /**
+     * Twilio requires E.164 (e.g. +12025551234), but numbers are stored as
+     * entered by the user (e.g. a plain 10-digit "2025551234"). The app's
+     * user base is US-based, so a bare 10-digit number is assumed to be a US
+     * number missing its country code; an 11-digit number starting with "1"
+     * is missing only the "+". Anything already starting with "+" is passed
+     * through as-is.
+     */
+    private function toE164(string $phoneNumber): string
+    {
+        if (str_starts_with($phoneNumber, '+')) {
+            return $phoneNumber;
+        }
+
+        $digits = preg_replace('/\D/', '', $phoneNumber);
+
+        return match (true) {
+            strlen($digits) === 10 => "+1{$digits}",
+            strlen($digits) === 11 && str_starts_with($digits, '1') => "+{$digits}",
+            default => "+{$digits}",
+        };
     }
 }

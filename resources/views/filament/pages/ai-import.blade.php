@@ -6,7 +6,7 @@
         <form wire:submit="extractQuestions">
             {{ $this->form }}
 
-            <div class="mt-4" x-data>
+            <div class="mt-6" x-data>
                 <input type="file" wire:model="uploadedFile" accept=".pdf,.doc,.docx,image/*" x-ref="aiFileInput" class="hidden" />
 
                 <x-filament::button type="button" color="gray" icon="heroicon-o-arrow-up-tray" x-on:click="$refs.aiFileInput.click()">

@@ -12,7 +12,7 @@
         <form wire:submit="parseFile">
             {{ $this->form }}
 
-            <div class="mt-4" x-data>
+            <div class="mt-6" x-data>
                 <input type="file" wire:model="uploadedFile" accept=".xlsx,.xls,.csv" x-ref="excelFileInput" class="hidden" />
 
                 <x-filament::button type="button" color="gray" icon="heroicon-o-arrow-up-tray" x-on:click="$refs.excelFileInput.click()">

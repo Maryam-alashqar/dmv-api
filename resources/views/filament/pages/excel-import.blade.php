@@ -3,19 +3,29 @@
         <x-slot name="heading">1. Upload a spreadsheet</x-slot>
         <x-slot name="description">
             Excel (.xlsx) or CSV, with one question per row.
-            <button type="button" wire:click="downloadTemplate" class="text-primary-600 hover:underline">Download the template file</button>
+            <x-filament::link tag="button" type="button" wire:click="downloadTemplate" icon="heroicon-o-arrow-down-tray" size="sm">
+                Download the template file
+            </x-filament::link>
             to see the exact columns expected.
         </x-slot>
 
         <form wire:submit="parseFile">
             {{ $this->form }}
 
-            <div class="mt-4">
-                <input type="file" wire:model="uploadedFile" accept=".xlsx,.xls,.csv"
-                    class="fi-input block w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900" />
-                <div wire:loading wire:target="uploadedFile" class="mt-1 text-xs text-gray-500">Uploading…</div>
+            <div class="mt-4" x-data>
+                <input type="file" wire:model="uploadedFile" accept=".xlsx,.xls,.csv" x-ref="excelFileInput" class="hidden" />
+
+                <x-filament::button type="button" color="gray" icon="heroicon-o-arrow-up-tray" x-on:click="$refs.excelFileInput.click()">
+                    Choose File
+                </x-filament::button>
+
+                <div wire:loading wire:target="uploadedFile" class="mt-2 text-xs text-gray-500">Uploading…</div>
+
                 @if ($uploadedFile)
-                    <p class="mt-1 text-xs text-gray-500">Selected: {{ $uploadedFile->getClientOriginalName() }}</p>
+                    <div wire:loading.remove wire:target="uploadedFile" class="mt-2 flex items-center gap-2 text-sm text-success-600">
+                        <x-filament::icon icon="heroicon-o-check-circle" class="h-5 w-5" />
+                        <span>{{ $uploadedFile->getClientOriginalName() }} — uploaded</span>
+                    </div>
                 @endif
             </div>
 

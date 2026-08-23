@@ -6,12 +6,20 @@
         <form wire:submit="extractQuestions">
             {{ $this->form }}
 
-            <div class="mt-4">
-                <input type="file" wire:model="uploadedFile" accept=".pdf,.doc,.docx,image/*"
-                    class="fi-input block w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900" />
-                <div wire:loading wire:target="uploadedFile" class="mt-1 text-xs text-gray-500">Uploading…</div>
+            <div class="mt-4" x-data>
+                <input type="file" wire:model="uploadedFile" accept=".pdf,.doc,.docx,image/*" x-ref="aiFileInput" class="hidden" />
+
+                <x-filament::button type="button" color="gray" icon="heroicon-o-arrow-up-tray" x-on:click="$refs.aiFileInput.click()">
+                    Choose File
+                </x-filament::button>
+
+                <div wire:loading wire:target="uploadedFile" class="mt-2 text-xs text-gray-500">Uploading…</div>
+
                 @if ($uploadedFile)
-                    <p class="mt-1 text-xs text-gray-500">Selected: {{ $uploadedFile->getClientOriginalName() }}</p>
+                    <div wire:loading.remove wire:target="uploadedFile" class="mt-2 flex items-center gap-2 text-sm text-success-600">
+                        <x-filament::icon icon="heroicon-o-check-circle" class="h-5 w-5" />
+                        <span>{{ $uploadedFile->getClientOriginalName() }} — uploaded</span>
+                    </div>
                 @endif
             </div>
 

@@ -64,4 +64,8 @@ return [
         'from' => env('TWILIO_FROM_NUMBER'),
     ],
 
+    'resend' => [
+        'key' => env('RESEND_KEY'),
+    ],
+
 ];

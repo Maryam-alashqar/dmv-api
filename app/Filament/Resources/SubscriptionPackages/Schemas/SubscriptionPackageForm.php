@@ -18,12 +18,27 @@ class SubscriptionPackageForm
                 TextInput::make('name_en')
                     ->required(),
                 TextInput::make('duration_days')
+                    ->label('Subscription Duration (days)')
                     ->required()
                     ->numeric()
                     ->default(30),
+                TextInput::make('simulation_limit')
+                    ->label('Simulation Exams Included')
+                    ->helperText('Leave empty for unlimited simulation exam attempts.')
+                    ->numeric()
+                    ->minValue(1)
+                    ->nullable(),
                 TextInput::make('price_usd')
+                    ->label('Price (USD)')
                     ->required()
-                    ->numeric(),
+                    ->numeric()
+                    ->prefix('$'),
+                TextInput::make('original_price_usd')
+                    ->label('Original Price Before Offer (USD)')
+                    ->helperText('Only set this if there\'s a special offer — leave empty for a regular package with no discount.')
+                    ->numeric()
+                    ->prefix('$')
+                    ->nullable(),
                 TextInput::make('stripe_price_id')
                     ->helperText('Managed automatically from the price above — created/updated in Stripe on save.')
                     ->disabled()

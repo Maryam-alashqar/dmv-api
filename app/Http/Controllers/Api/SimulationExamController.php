@@ -37,6 +37,11 @@ class SimulationExamController extends Controller
         return $this->errorResponse('This simulation exam is not available for your selected state.', 403);
     }
 
+    $limitResponse = $this->enforceSimulationLimit($request->user());
+    if ($limitResponse) {
+        return $limitResponse;
+    }
+
     $questions = $this->selectRandomizedQuestions($exam->state_id, $exam->total_questions);
 
     if ($questions->count() < $exam->total_questions) {
@@ -202,6 +207,36 @@ public function history(Request $request)
         'message' => 'Exam attempts history retrieved successfully',
         'data' => $attempts,
     ]);
+}
+
+/**
+ * Enforces the active subscription package's simulation_limit (null =
+ * unlimited): counts only attempts made since this subscription period's
+ * activation_date, so an earlier package's usage never counts against a
+ * newer one after a renewal/upgrade. Returns an error response if the
+ * limit is reached, or null when the user may proceed.
+ */
+private function enforceSimulationLimit(\App\Models\User $user): ?\Illuminate\Http\JsonResponse
+{
+    $subscription = $user->activeSubscription()->with('package')->first();
+
+    if (! $subscription || $subscription->package->simulation_limit === null) {
+        return null;
+    }
+
+    $usedCount = ExamAttempt::where('user_id', $user->id)
+        ->whereNotNull('exam_id')
+        ->where('created_at', '>=', $subscription->activation_date)
+        ->count();
+
+    if ($usedCount >= $subscription->package->simulation_limit) {
+        return response()->json([
+            'success' => false,
+            'message' => 'You have reached the simulation exam limit included in your current subscription package.',
+        ], 403);
+    }
+
+    return null;
 }
 
 /**

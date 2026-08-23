@@ -22,9 +22,19 @@ class SubscriptionPackagesTable
                 TextColumn::make('duration_days')
                     ->numeric()
                     ->sortable(),
-                TextColumn::make('price_usd')
+                TextColumn::make('simulation_limit')
+                    ->label('Exams Included')
+                    ->placeholder('Unlimited')
                     ->numeric()
                     ->sortable(),
+                TextColumn::make('price_usd')
+                    ->money('USD')
+                    ->sortable(),
+                TextColumn::make('original_price_usd')
+                    ->label('Was')
+                    ->money('USD')
+                    ->placeholder('—')
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('stripe_price_id')
                     ->searchable(),
                 TextColumn::make('apple_product_id')

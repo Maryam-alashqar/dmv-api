@@ -12,7 +12,9 @@
         "laravel/framework": "^12.0",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.10.1",
+        "phpoffice/phpspreadsheet": "*",
         "phpoffice/phpword": "^1.1",
+        "resend/resend-php": "*",
         "stripe/stripe-php": "^20.3",
         "twilio/sdk": "^8.11"
     },

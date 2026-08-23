@@ -3,15 +3,18 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Mail\VerificationCodeMail;
 use App\Models\User;
-use App\Services\SmsService;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class AuthController extends Controller
 {
@@ -22,7 +25,9 @@ class AuthController extends Controller
         $request->validate([
             'full_name' => 'required|string|max:255',
             'phone_number' => 'required|string|unique:users,phone_number',
-            'email' => 'nullable|email|unique:users,email',
+            // Required now: the verification code is delivered by email, so
+            // every account needs an address to receive it at.
+            'email' => 'required|email|unique:users,email',
             'password' => 'required|string|min:8|confirmed',
             'state_id' => 'required|exists:states,id',
         ]);
@@ -43,7 +48,7 @@ class AuthController extends Controller
         return $this->successResponse(array_merge([
             'user_id' => $user->id,
             'phone_number' => $user->phone_number,
-        ], $this->debugVerificationCode($code)), 'Account created. Verification code sent to phone.', 201);
+        ], $this->debugVerificationCode($code)), 'Account created. Verification code sent to email.', 201);
     }
 
     public function verify(Request $request)
@@ -205,7 +210,8 @@ class AuthController extends Controller
 
     /**
      * Generate a 6-digit verification code (5 min expiry), record it for the
-     * user, and text it to their phone.
+     * user, and email it (switched from SMS: Twilio's carrier verification
+     * requires an already-published app, which blocked delivery entirely).
      */
     private function issueVerificationCode(User $user): string
     {
@@ -218,10 +224,16 @@ class AuthController extends Controller
             'used' => false,
         ]);
 
-        app(SmsService::class)->send(
-            $user->phone_number,
-            "Your DMV verification code is {$code}. It expires in 5 minutes."
-        );
+        if ($user->email) {
+            try {
+                Mail::to($user->email)->send(new VerificationCodeMail($code));
+            } catch (Throwable $exception) {
+                Log::warning('Verification code email failed to send.', [
+                    'user_id' => $user->id,
+                    'error' => $exception->getMessage(),
+                ]);
+            }
+        }
 
         return $code;
     }

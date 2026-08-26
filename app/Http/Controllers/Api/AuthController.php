@@ -530,6 +530,31 @@ class AuthController extends Controller
         );
     }
 
+    /**
+     * Lets the "enter code" screen confirm the code is correct before the
+     * user moves on to a separate "enter new password" screen — a read-only
+     * check that never marks the code as used, so resetPassword() (the only
+     * place a reset code is actually consumed) still works normally
+     * afterwards with the same code.
+     */
+    public function verifyResetCode(Request $request)
+    {
+        $request->validate([
+            'phone_number' => 'required|string|exists:users,phone_number',
+            'code' => 'required|digits:6',
+        ]);
+
+        $user = User::where('phone_number', $request->phone_number)->first();
+
+        [$verification, $error] = $this->findValidResetCode($user, $request->code);
+
+        if ($error) {
+            return $this->errorResponse($error, 422);
+        }
+
+        return $this->successResponse(null, 'Verification code is valid.');
+    }
+
     public function resetPassword(Request $request)
     {
         $request->validate([
@@ -540,18 +565,10 @@ class AuthController extends Controller
 
         $user = User::where('phone_number', $request->phone_number)->first();
 
-        $verification = $user->verificationCodes()
-            ->where('code', $request->code)
-            ->where('used', false)
-            ->latest()
-            ->first();
+        [$verification, $error] = $this->findValidResetCode($user, $request->code);
 
-        if (! $verification) {
-            return $this->errorResponse('Invalid verification code.', 422);
-        }
-
-        if ($verification->expires_at->isPast()) {
-            return $this->errorResponse('Verification code has expired.', 422);
+        if ($error) {
+            return $this->errorResponse($error, 422);
         }
 
         $verification->update([
@@ -563,6 +580,28 @@ class AuthController extends Controller
         ]);
 
         return $this->successResponse(null, 'Password reset successfully.');
+    }
+
+    /**
+     * @return array{0: ?\App\Models\VerificationCode, 1: ?string} [verification, errorMessage]
+     */
+    private function findValidResetCode(User $user, string $code): array
+    {
+        $verification = $user->verificationCodes()
+            ->where('code', $code)
+            ->where('used', false)
+            ->latest()
+            ->first();
+
+        if (! $verification) {
+            return [null, 'Invalid verification code.'];
+        }
+
+        if ($verification->expires_at->isPast()) {
+            return [null, 'Verification code has expired.'];
+        }
+
+        return [$verification, null];
     }
 
     public function updateProfilePhoto(Request $request)

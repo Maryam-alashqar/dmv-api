@@ -17,6 +17,7 @@ Route::post('/auth/register', [AuthController::class, 'register']);
 Route::post('/auth/login', [AuthController::class, 'login']);
 Route::post('/auth/social', [AuthController::class, 'social']);
 Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
+Route::post('/auth/verify-reset-code', [AuthController::class, 'verifyResetCode']);
 Route::post('/auth/reset-password', [AuthController::class, 'resetPassword']);
 Route::post('/auth/verify', [AuthController::class, 'verify']);
 Route::post('/auth/resend-verification-code', [AuthController::class, 'resendVerificationCode']);

@@ -51,10 +51,14 @@ class SupportController extends Controller
         return response()->json([
             'success' => true,
             'data' => [
-                'title_ar' => Setting::get('privacy_title_ar', 'سياسة الخصوصية'),
-                'title_en' => Setting::get('privacy_title_en', 'Privacy Policy'),
-                'content_ar' => Setting::get('privacy_content_ar', ''),
-                'content_en' => Setting::get('privacy_content_en', ''),
+                'title_ar' => Setting::get('privacy_title_ar', config('legal.privacy_title_ar')),
+                'title_en' => Setting::get('privacy_title_en', config('legal.privacy_title_en')),
+                'content_ar' => Setting::get('privacy_content_ar', config('legal.privacy_content_ar')),
+                'content_en' => Setting::get('privacy_content_en', config('legal.privacy_content_en')),
+                'deletion_title_ar' => Setting::get('deletion_title_ar', config('legal.deletion_title_ar')),
+                'deletion_title_en' => Setting::get('deletion_title_en', config('legal.deletion_title_en')),
+                'deletion_content_ar' => Setting::get('deletion_content_ar', config('legal.deletion_content_ar')),
+                'deletion_content_en' => Setting::get('deletion_content_en', config('legal.deletion_content_en')),
             ],
         ]);
     }

@@ -39,14 +39,18 @@ class Settings extends Page implements HasSchemas
             'about_title_en' => Setting::get('about_title_en', 'About Us'),
             'about_content_ar' => Setting::get('about_content_ar', ''),
             'about_content_en' => Setting::get('about_content_en', ''),
-            'privacy_title_ar' => Setting::get('privacy_title_ar', 'سياسة الخصوصية'),
-            'privacy_title_en' => Setting::get('privacy_title_en', 'Privacy Policy'),
-            'privacy_content_ar' => Setting::get('privacy_content_ar', ''),
-            'privacy_content_en' => Setting::get('privacy_content_en', ''),
+            'privacy_title_ar' => Setting::get('privacy_title_ar', config('legal.privacy_title_ar')),
+            'privacy_title_en' => Setting::get('privacy_title_en', config('legal.privacy_title_en')),
+            'privacy_content_ar' => Setting::get('privacy_content_ar', config('legal.privacy_content_ar')),
+            'privacy_content_en' => Setting::get('privacy_content_en', config('legal.privacy_content_en')),
             'terms_title_ar' => Setting::get('terms_title_ar', 'الشروط والأحكام'),
             'terms_title_en' => Setting::get('terms_title_en', 'Terms of Use'),
             'terms_content_ar' => Setting::get('terms_content_ar', ''),
             'terms_content_en' => Setting::get('terms_content_en', ''),
+            'deletion_title_ar' => Setting::get('deletion_title_ar', config('legal.deletion_title_ar')),
+            'deletion_title_en' => Setting::get('deletion_title_en', config('legal.deletion_title_en')),
+            'deletion_content_ar' => Setting::get('deletion_content_ar', config('legal.deletion_content_ar')),
+            'deletion_content_en' => Setting::get('deletion_content_en', config('legal.deletion_content_en')),
         ]);
     }
 
@@ -63,6 +67,9 @@ class Settings extends Page implements HasSchemas
                 Section::make('About Us')->schema($this->contentFields('about')),
                 Section::make('Privacy Policy')->schema($this->contentFields('privacy')),
                 Section::make('Terms and Conditions')->schema($this->contentFields('terms')),
+                Section::make('Account & Data Deletion')
+                    ->description('Shown on the public privacy policy page, and required by Apple/Google for account-deletion review.')
+                    ->schema($this->contentFields('deletion')),
             ])
             ->statePath('data');
     }
@@ -73,7 +80,7 @@ class Settings extends Page implements HasSchemas
 
         Setting::set('free_questions_limit', $data['free_questions_limit'], 'integer');
 
-        foreach (['about', 'privacy', 'terms'] as $page) {
+        foreach (['about', 'privacy', 'terms', 'deletion'] as $page) {
             foreach (['title_ar', 'title_en', 'content_ar', 'content_en'] as $field) {
                 Setting::set("{$page}_{$field}", $data["{$page}_{$field}"] ?? '');
             }

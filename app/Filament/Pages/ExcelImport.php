@@ -108,6 +108,7 @@ class ExcelImport extends Page implements HasSchemas
                     'option_a_ar', 'option_b_ar', 'option_c_ar', 'option_d_ar',
                     'option_a_en', 'option_b_en', 'option_c_en', 'option_d_en',
                     'correct_answer', 'explanation_ar', 'difficulty_level',
+                    'image_url', 'option_a_image', 'option_b_image', 'option_c_image', 'option_d_image',
                 ], null),
                 $question,
                 ['included' => true],
@@ -139,7 +140,8 @@ class ExcelImport extends Page implements HasSchemas
                 'category_id' => $data['category_id'],
                 'question_text_ar' => $question['question_text_ar'],
                 'question_text_en' => $question['question_text_en'] ?: null,
-                'question_type' => 'text',
+                'question_type' => $question['image_url'] ? 'image' : 'text',
+                'image_url' => $question['image_url'] ?: null,
                 'option_a_ar' => $question['option_a_ar'],
                 'option_b_ar' => $question['option_b_ar'],
                 'option_c_ar' => $question['option_c_ar'],
@@ -148,6 +150,10 @@ class ExcelImport extends Page implements HasSchemas
                 'option_b_en' => $question['option_b_en'] ?: null,
                 'option_c_en' => $question['option_c_en'] ?: null,
                 'option_d_en' => $question['option_d_en'] ?: null,
+                'option_a_image' => $question['option_a_image'] ?: null,
+                'option_b_image' => $question['option_b_image'] ?: null,
+                'option_c_image' => $question['option_c_image'] ?: null,
+                'option_d_image' => $question['option_d_image'] ?: null,
                 'correct_answer' => $question['correct_answer'],
                 'explanation_ar' => $question['explanation_ar'],
                 'difficulty_level' => $question['difficulty_level'] ?: 'medium',
@@ -198,21 +204,9 @@ class ExcelImport extends Page implements HasSchemas
         unset($this->extractedQuestions[$index]);
     }
 
-    public function downloadTemplate(): \Symfony\Component\HttpFoundation\StreamedResponse
+    public function downloadCsvTemplate(): \Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $headers = [
-            'question_ar', 'question_en',
-            'option_a_ar', 'option_b_ar', 'option_c_ar', 'option_d_ar',
-            'option_a_en', 'option_b_en', 'option_c_en', 'option_d_en',
-            'correct_answer', 'explanation_ar', 'difficulty',
-        ];
-
-        $example = [
-            'ما هو الحد الأقصى للسرعة داخل المدينة؟', 'What is the speed limit in the city?',
-            '25 ميل/ساعة', '35 ميل/ساعة', '45 ميل/ساعة', '55 ميل/ساعة',
-            '25 mph', '35 mph', '45 mph', '55 mph',
-            'a', 'الحد الأقصى للسرعة داخل المدينة هو 25 ميل بالساعة ما لم تتم الإشارة إلى خلاف ذلك.', 'medium',
-        ];
+        [$headers, $example] = $this->templateHeadersAndExample();
 
         return response()->streamDownload(function () use ($headers, $example) {
             $handle = fopen('php://output', 'w');
@@ -220,5 +214,51 @@ class ExcelImport extends Page implements HasSchemas
             fputcsv($handle, $example);
             fclose($handle);
         }, 'questions-import-template.csv');
+    }
+
+    /**
+     * A real .xlsx (not CSV) with the same columns — needed because image
+     * columns only work when the admin can actually insert a picture into a
+     * cell, which a plain-text CSV can never carry.
+     */
+    public function downloadXlsxTemplate(): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        [$headers, $example] = $this->templateHeadersAndExample();
+
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->fromArray($headers, null, 'A1');
+        $sheet->fromArray($example, null, 'A2');
+        $sheet->getRowDimension(2)->setRowHeight(80);
+
+        return response()->streamDownload(function () use ($spreadsheet) {
+            (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet))->save('php://output');
+        }, 'questions-import-template.xlsx');
+    }
+
+    /**
+     * @return array{0: array<int, string>, 1: array<int, string>}
+     */
+    private function templateHeadersAndExample(): array
+    {
+        $headers = [
+            'question_ar', 'question_en',
+            'option_a_ar', 'option_b_ar', 'option_c_ar', 'option_d_ar',
+            'option_a_en', 'option_b_en', 'option_c_en', 'option_d_en',
+            'correct_answer', 'explanation_ar', 'difficulty',
+            'question_image', 'option_a_image', 'option_b_image', 'option_c_image', 'option_d_image',
+        ];
+
+        $example = [
+            'ما هو الحد الأقصى للسرعة داخل المدينة؟', 'What is the speed limit in the city?',
+            '25 ميل/ساعة', '35 ميل/ساعة', '45 ميل/ساعة', '55 ميل/ساعة',
+            '25 mph', '35 mph', '45 mph', '55 mph',
+            'a', 'الحد الأقصى للسرعة داخل المدينة هو 25 ميل بالساعة ما لم تتم الإشارة إلى خلاف ذلك.', 'medium',
+            // Insert a picture directly into these cells if you want images —
+            // leave blank for a text-only question/option.
+            '', '', '', '', '',
+        ];
+
+        return [$headers, $example];
     }
 }

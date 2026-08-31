@@ -3,10 +3,14 @@
         <x-slot name="heading">1. Upload a spreadsheet</x-slot>
         <x-slot name="description">
             Excel (.xlsx) or CSV, with one question per row.
-            <x-filament::link tag="button" type="button" wire:click="downloadTemplate" icon="heroicon-o-arrow-down-tray" size="sm">
-                Download the template file
+            <x-filament::link tag="button" type="button" wire:click="downloadCsvTemplate" icon="heroicon-o-arrow-down-tray" size="sm">
+                Download CSV template
             </x-filament::link>
-            to see the exact columns expected.
+            ·
+            <x-filament::link tag="button" type="button" wire:click="downloadXlsxTemplate" icon="heroicon-o-arrow-down-tray" size="sm">
+                Download Excel template
+            </x-filament::link>
+            to see the exact columns expected. To attach images (question or answer options), start from the Excel template and insert a picture directly into the cell under the matching image column — plain CSV can't carry images.
         </x-slot>
 
         <form wire:submit="parseFile">
@@ -70,11 +74,21 @@
                                     class="fi-input mt-1 block w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900"></textarea>
                             </div>
 
+                            @if ($question['image_url'])
+                                <div class="sm:col-span-2">
+                                    <label class="text-xs font-medium text-gray-500">Question Image (from spreadsheet)</label>
+                                    <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($question['image_url']) }}" class="mt-1 h-24 rounded-lg border border-gray-200 object-cover dark:border-gray-700" />
+                                </div>
+                            @endif
+
                             @foreach (['a', 'b', 'c', 'd'] as $letter)
                                 <div>
                                     <label class="text-xs font-medium text-gray-500">Option {{ strtoupper($letter) }} (Arabic)</label>
                                     <input type="text" wire:model="extractedQuestions.{{ $index }}.option_{{ $letter }}_ar" dir="rtl"
                                         class="fi-input mt-1 block w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900" />
+                                    @if ($question["option_{$letter}_image"])
+                                        <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($question["option_{$letter}_image"]) }}" class="mt-1 h-16 rounded-lg border border-gray-200 object-cover dark:border-gray-700" />
+                                    @endif
                                 </div>
                             @endforeach
 

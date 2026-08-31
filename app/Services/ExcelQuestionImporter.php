@@ -3,7 +3,14 @@
 namespace App\Services;
 
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Worksheet\BaseDrawing;
+use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
+use PhpOffice\PhpSpreadsheet\Worksheet\MemoryDrawing;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use RuntimeException;
 
 /**
@@ -51,6 +58,24 @@ class ExcelQuestionImporter
         'difficulty_level' => 'difficulty_level',
     ];
 
+    /**
+     * Header names for columns where the admin embeds an actual picture in
+     * the cell (Excel "Insert Picture") rather than typing text — only
+     * meaningful for real .xlsx files, since CSV can't carry embedded media.
+     */
+    private const IMAGE_COLUMN_MAP = [
+        'question_image' => 'image_url',
+        'image' => 'image_url',
+        'option_a_image' => 'option_a_image',
+        'a_image' => 'option_a_image',
+        'option_b_image' => 'option_b_image',
+        'b_image' => 'option_b_image',
+        'option_c_image' => 'option_c_image',
+        'c_image' => 'option_c_image',
+        'option_d_image' => 'option_d_image',
+        'd_image' => 'option_d_image',
+    ];
+
     private const REQUIRED_FIELDS = [
         'question_text_ar', 'option_a_ar', 'option_b_ar', 'option_c_ar', 'option_d_ar',
         'correct_answer', 'explanation_ar',
@@ -62,22 +87,36 @@ class ExcelQuestionImporter
     public function import(UploadedFile $file): array
     {
         $spreadsheet = IOFactory::load($file->getRealPath());
-        $rows = $spreadsheet->getActiveSheet()->toArray(null, true, true, false);
+        $sheet = $spreadsheet->getActiveSheet();
+        $rows = $sheet->toArray(null, true, true, false);
 
         if (empty($rows)) {
             return [];
         }
 
-        $fieldByColumnIndex = $this->mapHeaderRow(array_shift($rows));
+        // Keep original 0-indexed array keys (don't array_shift) so each
+        // row's array key still equals (its real Excel row number - 1) —
+        // needed to correlate embedded images, which are addressed by
+        // sheet coordinate, back to the right data row.
+        $fieldByColumnIndex = $this->mapHeaderRow($rows[0]);
+        $imageFieldByColumnLetter = $this->mapImageHeaderRow($rows[0]);
+        $imagesByRow = $imageFieldByColumnLetter
+            ? $this->extractImagesByRow($sheet, $imageFieldByColumnLetter)
+            : [];
 
         $questions = [];
 
-        foreach ($rows as $row) {
-            if ($this->isBlankRow($row)) {
+        foreach ($rows as $rowIndex => $row) {
+            if ($rowIndex === 0) {
+                continue;
+            }
+
+            if ($this->isBlankRow($row) && empty($imagesByRow[$rowIndex + 1])) {
                 continue;
             }
 
             $question = $this->mapRow($row, $fieldByColumnIndex);
+            $question = array_merge($question, $imagesByRow[$rowIndex + 1] ?? []);
 
             if (blank($question['question_text_ar'] ?? null)) {
                 continue;
@@ -98,7 +137,7 @@ class ExcelQuestionImporter
         $fieldByColumnIndex = [];
 
         foreach ($headerRow as $index => $header) {
-            $normalized = strtolower(str_replace([' ', '-'], '_', trim((string) $header)));
+            $normalized = $this->normalizeHeader($header);
 
             if (isset(self::COLUMN_MAP[$normalized])) {
                 $fieldByColumnIndex[$index] = self::COLUMN_MAP[$normalized];
@@ -115,6 +154,95 @@ class ExcelQuestionImporter
         }
 
         return $fieldByColumnIndex;
+    }
+
+    /**
+     * @param array<int, mixed> $headerRow
+     * @return array<string, string> column letter (e.g. "F") => question field
+     */
+    private function mapImageHeaderRow(array $headerRow): array
+    {
+        $fieldByColumnLetter = [];
+
+        foreach ($headerRow as $index => $header) {
+            $normalized = $this->normalizeHeader($header);
+
+            if (isset(self::IMAGE_COLUMN_MAP[$normalized])) {
+                // toArray()'s column index is 0-based; sheet coordinates are 1-based.
+                $fieldByColumnLetter[Coordinate::stringFromColumnIndex($index + 1)] = self::IMAGE_COLUMN_MAP[$normalized];
+            }
+        }
+
+        return $fieldByColumnLetter;
+    }
+
+    private function normalizeHeader(mixed $header): string
+    {
+        return strtolower(str_replace([' ', '-'], '_', trim((string) $header)));
+    }
+
+    /**
+     * Reads every picture embedded in the sheet, keeps only the ones
+     * anchored in a recognized image column, saves each to the "public"
+     * disk (same as the manual dashboard form and AI import use), and
+     * groups the resulting paths by the Excel row number they belong to.
+     *
+     * @param array<string, string> $imageFieldByColumnLetter
+     * @return array<int, array<string, string>> row number => [field => stored path]
+     */
+    private function extractImagesByRow(Worksheet $sheet, array $imageFieldByColumnLetter): array
+    {
+        $imagesByRow = [];
+
+        foreach ($sheet->getDrawingCollection() as $drawing) {
+            [$columnLetter, $rowNumber] = Coordinate::coordinateFromString($drawing->getCoordinates());
+
+            $field = $imageFieldByColumnLetter[$columnLetter] ?? null;
+
+            if (! $field) {
+                continue;
+            }
+
+            $path = $this->storeDrawing($drawing, $field === 'image_url' ? 'questions' : 'questions/options');
+
+            if ($path) {
+                $imagesByRow[$rowNumber][$field] = $path;
+            }
+        }
+
+        return $imagesByRow;
+    }
+
+    private function storeDrawing(BaseDrawing $drawing, string $directory): ?string
+    {
+        if ($drawing instanceof MemoryDrawing) {
+            // Generated in-memory rather than a real embedded picture file —
+            // not the normal "insert picture into a cell" case; skip it
+            // rather than guess at re-encoding it without ext-gd available.
+            return null;
+        }
+
+        if (! $drawing instanceof Drawing || $drawing->getIsURL()) {
+            return null;
+        }
+
+        // Embedded pictures are read back via a "zip://…" stream wrapper
+        // (the xlsx's own media file inside the zip archive), not a real
+        // filesystem path — is_file()/file_exists() are unreliable against
+        // stream wrappers on some platforms, so read directly instead and
+        // check the read itself for failure.
+        $contents = @file_get_contents($drawing->getPath());
+
+        if ($contents === false) {
+            return null;
+        }
+
+        $filename = Str::uuid() . '.' . ($drawing->getExtension() ?: 'png');
+        $path = "{$directory}/{$filename}";
+
+        Storage::disk('public')->put($path, $contents);
+
+        return $path;
     }
 
     /**

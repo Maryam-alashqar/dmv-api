@@ -51,6 +51,11 @@ class Settings extends Page implements HasSchemas
             'deletion_title_en' => Setting::get('deletion_title_en', config('legal.deletion_title_en')),
             'deletion_content_ar' => Setting::get('deletion_content_ar', config('legal.deletion_content_ar')),
             'deletion_content_en' => Setting::get('deletion_content_en', config('legal.deletion_content_en')),
+            'support_email' => Setting::get('support_email', config('legal.support_email')),
+            'support_title_ar' => Setting::get('support_title_ar', config('legal.support_title_ar')),
+            'support_title_en' => Setting::get('support_title_en', config('legal.support_title_en')),
+            'support_content_ar' => Setting::get('support_content_ar', config('legal.support_content_ar')),
+            'support_content_en' => Setting::get('support_content_en', config('legal.support_content_en')),
         ]);
     }
 
@@ -70,6 +75,16 @@ class Settings extends Page implements HasSchemas
                 Section::make('Account & Data Deletion')
                     ->description('Shown on the public privacy policy page, and required by Apple/Google for account-deletion review.')
                     ->schema($this->contentFields('deletion')),
+                Section::make('Support')
+                    ->description('Shown on the public support page — required as the "Support URL" for App Store submission.')
+                    ->schema([
+                        TextInput::make('support_email')
+                            ->label('Support email')
+                            ->email()
+                            ->required()
+                            ->columnSpanFull(),
+                        ...$this->contentFields('support'),
+                    ]),
             ])
             ->statePath('data');
     }
@@ -79,8 +94,9 @@ class Settings extends Page implements HasSchemas
         $data = $this->form->getState();
 
         Setting::set('free_questions_limit', $data['free_questions_limit'], 'integer');
+        Setting::set('support_email', $data['support_email']);
 
-        foreach (['about', 'privacy', 'terms', 'deletion'] as $page) {
+        foreach (['about', 'privacy', 'terms', 'deletion', 'support'] as $page) {
             foreach (['title_ar', 'title_en', 'content_ar', 'content_en'] as $field) {
                 Setting::set("{$page}_{$field}", $data["{$page}_{$field}"] ?? '');
             }

@@ -100,4 +100,32 @@ What is retained temporarily, and why:
 For any question about your data, or to follow up on a deletion request submitted via the contact form, please use the same "Contact Us" form in the app.
 TEXT,
 
+    'support_email' => 'Dmvarabic@gmail.com',
+    'support_title_ar' => 'الدعم الفني - تطبيق DMV-Arabic',
+    'support_title_en' => 'Support - DMV-Arabic App',
+
+    'support_content_ar' => <<<'TEXT'
+إذا واجهت أي مشكلة تقنية، أو عندك سؤال حول حسابك أو اشتراكك، أو بدك تبلغ عن خطأ بمحتوى الأسئلة، فريق الدعم جاهز لمساعدتك.
+
+طرق التواصل:
+- راسلنا مباشرة على البريد الإلكتروني: Dmvarabic@gmail.com
+- أو استخدم نموذج "تواصل معنا" (Contact Us) المتاح داخل التطبيق من قسم الإعدادات
+
+نرد عادةً خلال 1-3 أيام عمل.
+
+لأي استفسار حول الخصوصية أو حذف الحساب، راجع صفحة سياسة الخصوصية.
+TEXT,
+
+    'support_content_en' => <<<'TEXT'
+If you run into a technical issue, have a question about your account or subscription, or want to report an error in the question content, our support team is here to help.
+
+How to reach us:
+- Email us directly at: Dmvarabic@gmail.com
+- Or use the "Contact Us" form available inside the app, under Settings
+
+We typically respond within 1-3 business days.
+
+For any question about privacy or account deletion, see our Privacy Policy page.
+TEXT,
+
 ];

@@ -27,6 +27,21 @@ class LegalController extends Controller
     }
 
     /**
+     * Public, browser-readable support page — required as the "Support URL"
+     * for App Store submission.
+     */
+    public function support()
+    {
+        return view('legal.support', [
+            'supportTitleAr' => Setting::get('support_title_ar', config('legal.support_title_ar')),
+            'supportTitleEn' => Setting::get('support_title_en', config('legal.support_title_en')),
+            'supportEmail' => Setting::get('support_email', config('legal.support_email')),
+            'supportContentAr' => $this->formatLegalText(Setting::get('support_content_ar', config('legal.support_content_ar'))),
+            'supportContentEn' => $this->formatLegalText(Setting::get('support_content_en', config('legal.support_content_en'))),
+        ]);
+    }
+
+    /**
      * Turns the plain text admins type into the Settings page (numbered
      * "1. Heading" lines, "- bullet" lines, blank-line-separated paragraphs)
      * into real HTML so the public page reads like a formatted document

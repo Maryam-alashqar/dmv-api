@@ -36,9 +36,9 @@ return [
     ],
 
     'stripe' => [
-    'key' => env('STRIPE_KEY'),
-    'secret' => env('STRIPE_SECRET'),
-    'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
+        'key' => env('STRIPE_KEY'),
+        'secret' => env('STRIPE_SECRET'),
+        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
     ],
 
     'google' => [
@@ -48,6 +48,17 @@ return [
     'apple' => [
         'client_id' => env('APPLE_CLIENT_ID'),
         'shared_secret' => env('APPLE_SHARED_SECRET'),
+        'iap' => [
+            'issuer_id' => env('APPLE_IAP_ISSUER_ID'),
+            'key_id' => env('APPLE_IAP_KEY_ID'),
+            'bundle_id' => env('APPLE_IAP_BUNDLE_ID'),
+            'app_apple_id' => env('APPLE_IAP_APPLE_ID'),
+            'private_key_path' => env('APPLE_IAP_PRIVATE_KEY_PATH'),
+            'root_ca_paths' => array_values(array_filter(array_map(
+                'trim',
+                explode(',', (string) env('APPLE_IAP_ROOT_CA_PATHS', ''))
+            ))),
+        ],
     ],
 
     'anthropic' => [

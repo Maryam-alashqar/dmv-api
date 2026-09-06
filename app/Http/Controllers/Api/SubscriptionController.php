@@ -2,14 +2,19 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\AppleIapException;
 use App\Http\Controllers\Controller;
+use App\Models\AppleIapTransaction;
 use App\Models\Payment;
 use App\Models\SubscriptionPackage;
+use App\Models\User;
 use App\Models\UserSubscription;
+use App\Services\AppleAppStoreService;
 use App\Traits\ApiResponseTrait;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Stripe\Exception\SignatureVerificationException;
 use Stripe\PaymentIntent;
 use Stripe\Stripe;
@@ -95,7 +100,7 @@ class SubscriptionController extends Controller
             // user, while a genuinely new purchase attempt a minute later still
             // gets its own PaymentIntent.
             $idempotencyKey = $request->string('idempotency_key')->toString()
-                ?: hash('sha256', "subscribe:{$user->id}:{$package->id}:" . now()->format('YmdHi'));
+                ?: hash('sha256', "subscribe:{$user->id}:{$package->id}:".now()->format('YmdHi'));
 
             $paymentIntent = $stripe->paymentIntents->create([
                 'amount' => $amountInCents,
@@ -117,7 +122,7 @@ class SubscriptionController extends Controller
                     'platform' => $request->platform,
                 ],
 
-                'description' => 'DMV subscription: ' . $package->name_en,
+                'description' => 'DMV subscription: '.$package->name_en,
             ], [
                 'idempotency_key' => $idempotencyKey,
             ]);
@@ -184,6 +189,11 @@ class SubscriptionController extends Controller
      */
     public function status(Request $request)
     {
+        $request->user()->subscriptions()
+            ->where('status', 'active')
+            ->where('expiry_date', '<=', now())
+            ->update(['status' => 'expired']);
+
         $subscription = $request->user()
             ->subscriptions()
             ->with(['package', 'payment'])
@@ -212,6 +222,8 @@ class SubscriptionController extends Controller
                     false
                 ),
                 'auto_renewal' => $subscription->auto_renewal,
+                'product_id' => $subscription->package->apple_product_id,
+                'environment' => $subscription->appleIapTransaction?->environment,
 
                 'package' => [
                     'id' => $subscription->package->id,
@@ -249,18 +261,18 @@ class SubscriptionController extends Controller
     }
 
     public function paymentHistory(Request $request)
-{
-    $payments = Payment::with('package')
-        ->where('user_id', $request->user()->id)
-        ->latest()
-        ->paginate(10);
+    {
+        $payments = Payment::with('package')
+            ->where('user_id', $request->user()->id)
+            ->latest()
+            ->paginate(10);
 
-    return response()->json([
-        'success' => true,
-        'message' => 'Payment history retrieved successfully',
-        'data' => $payments,
-    ]);
-}
+        return response()->json([
+            'success' => true,
+            'message' => 'Payment history retrieved successfully',
+            'data' => $payments,
+        ]);
+    }
 
     /**
      * Stripe webhook receiver.
@@ -380,124 +392,181 @@ class SubscriptionController extends Controller
     }
 
     /**
-     * Verifies an Apple In-App Purchase receipt and activates the
+     * Verifies an Apple In-App Purchase transaction and activates the
      * corresponding subscription for iOS purchases (BR-08).
      *
      * POST /api/subscriptions/apple-iap
      */
-    public function appleIap(Request $request)
+    public function appleIap(Request $request, AppleAppStoreService $apple)
     {
         $request->validate([
-            'receipt_data' => 'required|string',
-            'package_id' => 'required|exists:subscription_packages,id',
+            'transaction_id' => ['required', 'string', 'max:255'],
+            'product_id' => ['sometimes', 'string', 'max:255'],
         ]);
 
         $user = $request->user();
 
-        $package = SubscriptionPackage::where('id', $request->package_id)
+        try {
+            $verified = $apple->verifyTransaction($request->string('transaction_id')->toString());
+        } catch (AppleIapException $exception) {
+            report($exception);
+
+            return $this->errorResponse($exception->getMessage(), $exception->httpStatus);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return $this->errorResponse('Unable to verify the Apple transaction at this time.', 503);
+        }
+
+        if ($request->filled('product_id') && ! hash_equals($verified->productId, $request->string('product_id')->toString())) {
+            return $this->errorResponse('The verified Apple product does not match the requested product.', 422);
+        }
+
+        $package = SubscriptionPackage::query()
+            ->where('apple_product_id', $verified->productId)
             ->where('is_active', true)
             ->first();
 
         if (! $package) {
-            return $this->errorResponse('The selected subscription package is unavailable.', 404);
+            return $this->errorResponse('The verified Apple product is not configured or is unavailable.', 422);
+        }
+
+        if ($package->duration_days < 1 || $package->duration_days > 3660) {
+            return $this->errorResponse('The Apple product duration is not configured correctly.', 500);
+        }
+
+        if ($verified->purchaseDate->isAfter(now()->addMinutes(5))) {
+            return $this->errorResponse('The Apple purchase date is in the future.', 422);
+        }
+
+        if ($verified->appAccountToken !== null) {
+            if ($user->apple_app_account_token === null
+                || ! hash_equals(Str::lower($user->apple_app_account_token), $verified->appAccountToken)) {
+                return $this->errorResponse('This Apple purchase belongs to a different app account.', 409);
+            }
         }
 
         try {
-            $receiptInfo = $this->verifyAppleReceipt($request->receipt_data);
-        } catch (Throwable $exception) {
+            [$subscription, $alreadyProcessed] = DB::transaction(function () use ($user, $package, $verified) {
+                User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+
+                $existingTransaction = AppleIapTransaction::query()
+                    ->where('transaction_id', $verified->transactionId)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($existingTransaction) {
+                    if ($existingTransaction->user_id !== $user->id) {
+                        throw new AppleIapException('This Apple purchase has already been linked to another user.', 409);
+                    }
+
+                    return [$existingTransaction->subscription()->firstOrFail(), true];
+                }
+
+                $existingActive = UserSubscription::query()
+                    ->where('user_id', $user->id)
+                    ->where('status', 'active')
+                    ->where('expiry_date', '>', now())
+                    ->latest('expiry_date')
+                    ->lockForUpdate()
+                    ->first();
+
+                $periodStart = $verified->purchaseDate->copy();
+                $canStack = $existingActive
+                    && $verified->purchaseDate->greaterThanOrEqualTo($existingActive->activation_date)
+                    && $verified->purchaseDate->lessThanOrEqualTo($existingActive->expiry_date);
+
+                if ($canStack) {
+                    $periodStart = $existingActive->expiry_date->copy();
+                }
+
+                $expiresDate = $periodStart->copy()->addDays($package->duration_days);
+                $isActive = $expiresDate->isFuture();
+
+                if ($isActive && $existingActive) {
+                    $existingActive->update(['status' => 'expired']);
+                }
+
+                $payment = Payment::create([
+                    'user_id' => $user->id,
+                    'package_id' => $package->id,
+                    'amount_usd' => $package->price_usd,
+                    'payment_method' => 'apple_iap',
+                    'apple_transaction_id' => $verified->transactionId,
+                    'payment_status' => 'confirmed',
+                ]);
+
+                $subscription = UserSubscription::create([
+                    'user_id' => $user->id,
+                    'package_id' => $package->id,
+                    'payment_id' => $payment->id,
+                    'activation_date' => $verified->purchaseDate,
+                    'expiry_date' => $expiresDate,
+                    'status' => $isActive ? 'active' : 'expired',
+                    'auto_renewal' => false,
+                ]);
+
+                AppleIapTransaction::create([
+                    'user_id' => $user->id,
+                    'payment_id' => $payment->id,
+                    'user_subscription_id' => $subscription->id,
+                    'product_id' => $verified->productId,
+                    'transaction_id' => $verified->transactionId,
+                    'original_transaction_id' => $verified->originalTransactionId,
+                    'app_account_token' => $verified->appAccountToken,
+                    'purchase_date' => $verified->purchaseDate,
+                    'expires_date' => $expiresDate,
+                    'environment' => $verified->environment,
+                    'revocation_date' => $verified->revocationDate,
+                    'signed_transaction_info' => $verified->signedTransactionInfo,
+                    'verified_at' => now(),
+                ]);
+
+                return [$subscription, false];
+            }, 3);
+        } catch (AppleIapException $exception) {
+            return $this->errorResponse($exception->getMessage(), $exception->httpStatus);
+        } catch (QueryException $exception) {
             report($exception);
 
-            return $this->errorResponse('Unable to verify the Apple receipt.', 422);
+            $existing = AppleIapTransaction::where('transaction_id', $verified->transactionId)->first();
+            if ($existing && $existing->user_id === $user->id && $existing->subscription) {
+                $subscription = $existing->subscription;
+                $alreadyProcessed = true;
+            } else {
+                return $this->errorResponse('This Apple purchase has already been processed.', 409);
+            }
         }
-
-        if (Payment::where('apple_transaction_id', $receiptInfo['transaction_id'])->exists()) {
-            return $this->errorResponse('This purchase has already been processed.', 409);
-        }
-
-        $payment = Payment::create([
-            'user_id' => $user->id,
-            'package_id' => $package->id,
-            'amount_usd' => $package->price_usd,
-            'payment_method' => 'apple_iap',
-            'apple_transaction_id' => $receiptInfo['transaction_id'],
-            'payment_status' => 'confirmed',
-        ]);
-
-        $subscription = $this->activateAppleSubscription($payment, $receiptInfo['expires_date']);
 
         return $this->successResponse([
+            'already_processed' => $alreadyProcessed,
+            'transaction_id' => $verified->transactionId,
+            'product_id' => $verified->productId,
+            'environment' => $verified->environment,
+            'expires_at' => $subscription->expiry_date,
             'subscription' => [
                 'id' => $subscription->id,
                 'status' => $subscription->status,
                 'activation_date' => $subscription->activation_date,
                 'expiry_date' => $subscription->expiry_date,
             ],
-        ], 'Apple subscription activated successfully.');
+        ], $alreadyProcessed ? 'Apple purchase was already processed.' : 'Apple subscription activated successfully.');
     }
 
-    private function activateAppleSubscription(Payment $payment, ?Carbon $expiresDate): UserSubscription
+    public function appleAccountToken(Request $request)
     {
-        $package = $payment->package;
+        $user = DB::transaction(function () use ($request) {
+            $user = User::query()->whereKey($request->user()->id)->lockForUpdate()->firstOrFail();
 
-        $existingActive = UserSubscription::where('user_id', $payment->user_id)
-            ->where('status', 'active')
-            ->where('expiry_date', '>', now())
-            ->latest('expiry_date')
-            ->first();
+            if ($user->apple_app_account_token === null) {
+                $user->forceFill(['apple_app_account_token' => (string) Str::uuid()])->save();
+            }
 
-        if ($existingActive) {
-            $existingActive->update(['status' => 'expired']);
-        }
+            return $user;
+        });
 
-        return UserSubscription::create([
-            'user_id' => $payment->user_id,
-            'package_id' => $package->id,
-            'payment_id' => $payment->id,
-            'activation_date' => now(),
-            'expiry_date' => $expiresDate ?? now()->addDays($package->duration_days),
-            'status' => 'active',
-            // Apple manages the recurring charge itself; renewal receipts arrive
-            // via App Store server notifications rather than a client call.
-            'auto_renewal' => true,
-        ]);
-    }
-
-    /**
-     * @return array{transaction_id: string, product_id: string, expires_date: ?Carbon}
-     */
-    private function verifyAppleReceipt(string $receiptData): array
-    {
-        $verify = fn (string $endpoint) => Http::timeout(10)->post($endpoint, [
-            'receipt-data' => $receiptData,
-            'password' => config('services.apple.shared_secret'),
-            'exclude-old-transactions' => true,
-        ])->json();
-
-        $response = $verify('https://buy.itunes.apple.com/verifyReceipt');
-
-        // 21007 = a sandbox receipt was sent to the production endpoint; retry against sandbox.
-        if (($response['status'] ?? null) === 21007) {
-            $response = $verify('https://sandbox.itunes.apple.com/verifyReceipt');
-        }
-
-        if (($response['status'] ?? -1) !== 0) {
-            throw new \RuntimeException('Apple receipt validation failed with status ' . ($response['status'] ?? 'unknown'));
-        }
-
-        $latestTransaction = collect($response['latest_receipt_info'] ?? [])
-            ->sortByDesc('expires_date_ms')
-            ->first();
-
-        if (! $latestTransaction) {
-            throw new \RuntimeException('No transaction found in Apple receipt.');
-        }
-
-        return [
-            'transaction_id' => $latestTransaction['transaction_id'],
-            'product_id' => $latestTransaction['product_id'],
-            'expires_date' => isset($latestTransaction['expires_date_ms'])
-                ? Carbon::createFromTimestampMs((int) $latestTransaction['expires_date_ms'])
-                : null,
-        ];
+        return $this->successResponse([
+            'app_account_token' => $user->apple_app_account_token,
+        ], 'Apple app account token retrieved successfully.');
     }
 }

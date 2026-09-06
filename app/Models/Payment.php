@@ -8,27 +8,31 @@ class Payment extends Model
 {
     //
     protected $fillable = [
-    'user_id',
-    'package_id',
-    'amount_usd',
-    'payment_method',
-    'stripe_payment_intent_id',
-    'apple_transaction_id',
-    'payment_status',
-];
+        'user_id',
+        'package_id',
+        'amount_usd',
+        'payment_method',
+        'stripe_payment_intent_id',
+        'apple_transaction_id',
+        'payment_status',
+    ];
 
-public function user()
-{
-    return $this->belongsTo(User::class);
-}
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
 
-public function package()
-{
-    return $this->belongsTo(SubscriptionPackage::class, 'package_id');
-}
+    public function package()
+    {
+        return $this->belongsTo(SubscriptionPackage::class, 'package_id');
+    }
 
-protected $casts = [
-    'amount_usd' => 'decimal:2',
-];
+    public function appleIapTransaction()
+    {
+        return $this->hasOne(AppleIapTransaction::class);
+    }
 
+    protected $casts = [
+        'amount_usd' => 'decimal:2',
+    ];
 }

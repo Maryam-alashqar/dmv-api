@@ -59,6 +59,8 @@ Route::middleware(['auth:sanctum', 'ability:access'])->group(function () {
 
     Route::post('/subscriptions/initiate', [SubscriptionController::class, 'initiate']);
     Route::post('/subscriptions/apple-iap', [SubscriptionController::class, 'appleIap']);
+    Route::post('/subscriptions/verify', [SubscriptionController::class, 'appleIap']);
+    Route::get('/subscriptions/apple-account-token', [SubscriptionController::class, 'appleAccountToken']);
     Route::get('/subscriptions/status', [SubscriptionController::class, 'status']);
     Route::get('/subscriptions/history', [SubscriptionController::class, 'history']);
     Route::get('/payments/history', [SubscriptionController::class, 'paymentHistory']);

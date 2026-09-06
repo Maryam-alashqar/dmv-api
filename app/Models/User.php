@@ -37,6 +37,7 @@ class User extends Authenticatable implements FilamentUser, HasName
         'free_questions_used',
         'stripe_customer_id',
         'apple_uid',
+        'apple_app_account_token',
         'google_uid',
         'fcm_token',
         'role',
@@ -186,5 +187,10 @@ class User extends Authenticatable implements FilamentUser, HasName
     public function payments()
     {
         return $this->hasMany(Payment::class);
+    }
+
+    public function appleIapTransactions()
+    {
+        return $this->hasMany(AppleIapTransaction::class);
     }
 }

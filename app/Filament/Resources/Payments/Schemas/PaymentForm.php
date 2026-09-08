@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Payments\Schemas;
 
+use App\Models\User;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Schema;
@@ -14,7 +15,11 @@ class PaymentForm
             ->components([
                 Select::make('user_id')
                     ->relationship('user', 'email')
-                    ->searchable()
+                    // Email is optional at registration (phone-only accounts are
+                    // valid), so a plain 'email' title attribute crashes this
+                    // Select for any such user — always fall back to a non-null label.
+                    ->getOptionLabelFromRecordUsing(fn (User $record) => $record->email ?: "{$record->full_name} ({$record->phone_number})")
+                    ->searchable(['email', 'full_name', 'phone_number'])
                     ->preload()
                     ->required(),
                Select::make('package_id')
@@ -28,6 +33,11 @@ class PaymentForm
                     ->required(),
                 Select::make('payment_method')
                     ->options([
+            // "stripe" is a placeholder the backend sets on a Payment row the
+            // moment a Stripe checkout starts, before the webhook resolves it
+            // to the real card type — must stay selectable here or opening a
+            // still-pending Stripe payment crashes this Select too.
+            'stripe' => 'Stripe (pending)',
             'credit_card' => 'Credit card',
             'debit_card' => 'Debit card',
             'apple_pay' => 'Apple pay',

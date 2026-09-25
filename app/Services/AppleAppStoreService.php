@@ -4,9 +4,11 @@ namespace App\Services;
 
 use App\Dto\VerifiedAppleTransaction;
 use App\Exceptions\AppleIapException;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class AppleAppStoreService
@@ -23,11 +25,7 @@ class AppleAppStoreService
             throw new AppleIapException('The Apple transaction ID is invalid.');
         }
 
-        $response = $this->getTransaction(self::PRODUCTION_URL, $transactionId);
-
-        if ($this->isTransactionNotFound($response)) {
-            $response = $this->getTransaction(self::SANDBOX_URL, $transactionId);
-        }
+        $response = $this->fetchTransaction($transactionId);
 
         if (! $response->successful()) {
             throw new AppleIapException(
@@ -57,6 +55,54 @@ class AppleAppStoreService
                 : null,
             signedTransactionInfo: $signedTransaction,
         );
+    }
+
+    /**
+     * Queries production first and falls back to sandbox whenever production
+     * does not return the transaction (App Review and TestFlight purchases
+     * only exist in sandbox).
+     */
+    private function fetchTransaction(string $transactionId): Response
+    {
+        $production = null;
+
+        try {
+            $production = $this->getTransaction(self::PRODUCTION_URL, $transactionId);
+
+            if ($production->successful()) {
+                return $production;
+            }
+        } catch (ConnectionException $exception) {
+            report($exception);
+        }
+
+        try {
+            $sandbox = $this->getTransaction(self::SANDBOX_URL, $transactionId);
+        } catch (ConnectionException $exception) {
+            if ($production === null) {
+                throw new AppleIapException('Unable to reach Apple to verify this transaction.', 503);
+            }
+
+            report($exception);
+
+            return $production;
+        }
+
+        if ($sandbox->successful()) {
+            return $sandbox;
+        }
+
+        Log::warning('Apple transaction lookup failed in both environments.', [
+            'transaction_id' => $transactionId,
+            'production_status' => $production?->status(),
+            'production_error_code' => $production?->json('errorCode'),
+            'sandbox_status' => $sandbox->status(),
+            'sandbox_error_code' => $sandbox->json('errorCode'),
+        ]);
+
+        // A "not found" in production only means the purchase is a sandbox one,
+        // so the sandbox error is the meaningful one to surface.
+        return $production === null || $this->isTransactionNotFound($production) ? $sandbox : $production;
     }
 
     protected function getTransaction(string $baseUrl, string $transactionId): Response

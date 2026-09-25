@@ -565,7 +565,9 @@ class SubscriptionController extends Controller
             return $user;
         });
 
+        // The iOS app reads data.token; app_account_token is kept for older builds.
         return $this->successResponse([
+            'token' => $user->apple_app_account_token,
             'app_account_token' => $user->apple_app_account_token,
         ], 'Apple app account token retrieved successfully.');
     }

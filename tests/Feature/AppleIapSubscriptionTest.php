@@ -223,6 +223,66 @@ test('the app account token endpoint creates and reuses one stable UUID', functi
     $first = $this->withToken($this->token)->getJson('/api/subscriptions/apple-account-token')->assertOk();
     $second = $this->withToken($this->token)->getJson('/api/subscriptions/apple-account-token')->assertOk();
 
-    expect($first->json('data.app_account_token'))->toBe($second->json('data.app_account_token'))
-        ->and(Str::isUuid($first->json('data.app_account_token')))->toBeTrue();
+    expect($first->json('data.token'))->toBe($second->json('data.token'))
+        ->and(Str::isUuid($first->json('data.token')))->toBeTrue()
+        ->and($first->json('success'))->toBeTrue()
+        ->and($first->json('data.app_account_token'))->toBe($first->json('data.token'))
+        ->and($first->json('data.token'))->toBe($this->user->fresh()->apple_app_account_token);
+});
+
+test('the app account token endpoint requires authentication', function () {
+    $this->getJson('/api/subscriptions/apple-account-token')->assertUnauthorized();
+});
+
+function appleLookupResponse(int $status, array $body): \Illuminate\Http\Client\Response
+{
+    return new \Illuminate\Http\Client\Response(new \GuzzleHttp\Psr7\Response($status, [], json_encode($body)));
+}
+
+test('apple verification retries on sandbox when production fails for any reason', function (int $productionStatus, array $productionBody) {
+    $service = Mockery::mock(AppleAppStoreService::class)->makePartial()->shouldAllowMockingProtectedMethods();
+    $service->shouldReceive('getTransaction')->once()
+        ->with('https://api.storekit.apple.com', '2000000000000099')
+        ->andReturn(appleLookupResponse($productionStatus, $productionBody));
+    $service->shouldReceive('getTransaction')->once()
+        ->with('https://api.storekit-sandbox.apple.com', '2000000000000099')
+        ->andReturn(appleLookupResponse(200, ['signedTransactionInfo' => 'not-a-jws']));
+
+    // Reaching JWS decoding proves the sandbox response was the one used.
+    expect(fn () => $service->verifyTransaction('2000000000000099'))
+        ->toThrow(\App\Exceptions\AppleIapException::class, 'Apple returned malformed signed transaction data.');
+})->with([
+    'transaction not found' => [404, ['errorCode' => 4040010]],
+    'other client error' => [400, ['errorCode' => 4000006]],
+    'server error' => [500, []],
+]);
+
+test('apple verification retries on sandbox when production is unreachable', function () {
+    $service = Mockery::mock(AppleAppStoreService::class)->makePartial()->shouldAllowMockingProtectedMethods();
+    $service->shouldReceive('getTransaction')->once()
+        ->with('https://api.storekit.apple.com', '2000000000000099')
+        ->andThrow(new \Illuminate\Http\Client\ConnectionException('timeout'));
+    $service->shouldReceive('getTransaction')->once()
+        ->with('https://api.storekit-sandbox.apple.com', '2000000000000099')
+        ->andReturn(appleLookupResponse(200, ['signedTransactionInfo' => 'not-a-jws']));
+
+    expect(fn () => $service->verifyTransaction('2000000000000099'))
+        ->toThrow(\App\Exceptions\AppleIapException::class, 'Apple returned malformed signed transaction data.');
+});
+
+test('apple verification surfaces the sandbox error when the purchase is missing from production', function () {
+    $service = Mockery::mock(AppleAppStoreService::class)->makePartial()->shouldAllowMockingProtectedMethods();
+    $service->shouldReceive('getTransaction')
+        ->with('https://api.storekit.apple.com', '2000000000000099')
+        ->andReturn(appleLookupResponse(404, ['errorCode' => 4040010]));
+    $service->shouldReceive('getTransaction')
+        ->with('https://api.storekit-sandbox.apple.com', '2000000000000099')
+        ->andReturn(appleLookupResponse(503, []));
+
+    try {
+        $service->verifyTransaction('2000000000000099');
+        $this->fail('Expected an AppleIapException.');
+    } catch (\App\Exceptions\AppleIapException $exception) {
+        expect($exception->httpStatus)->toBe(503);
+    }
 });
